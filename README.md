@@ -3,9 +3,10 @@
 A Latin American Spanish trainer for adults who want to actually learn the language, built
 around the parts of Duolingo that work and without the parts that exist to keep you on the app.
 
-| Review | Flashcard | Story | Voice |
-|---|---|---|---|
-| ![Review home with stats](docs/screenshots/repaso.png) | ![English to Spanish card with a personal connection note](docs/screenshots/tarjeta.png) | ![A story with a tapped word explained](docs/screenshots/cuento.png) | ![Choosing a Latin American voice](docs/screenshots/voz.png) |
+<table>
+<tr><td><img src="docs/screenshots/repaso.png" width="180" alt="Review home with plain stats"></td><td><img src="docs/screenshots/tarjeta.png" width="180" alt="English to Spanish card with a personal connection note"></td><td><img src="docs/screenshots/cuento.png" width="180" alt="A story with a tapped word explained"></td><td><img src="docs/screenshots/voz.png" width="180" alt="Choosing a Latin American voice"></td></tr>
+<tr><td align="center">Review</td><td align="center">Flashcard</td><td align="center">Story</td><td align="center">Voice</td></tr>
+</table>
 
 ## What it's for
 
