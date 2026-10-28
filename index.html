@@ -157,8 +157,21 @@ details summary{cursor:pointer;font-weight:700}
 </svg>
 
 <div class="wrap">
+  <!-- SIGN IN -->
+  <section id="v-login" hidden>
+    <header class="top"><h1>Palabra Viva</h1></header>
+    <div class="panel stack">
+      <h2>Sign in</h2>
+      <p class="muted" style="margin:0">Open your personal login link on this device, or paste it here.</p>
+      <input type="text" id="loginLink" placeholder="https://…/spanish/#login=…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="btn primary" id="loginBtn">Sign in</button>
+      <div id="loginStatus"></div>
+    </div>
+  </section>
+  <p class="muted" id="bootMsg" style="margin:24px 0" hidden></p>
+
   <!-- REVIEW -->
-  <section id="v-review">
+  <section id="v-review" hidden>
     <header class="top"><h1>Repaso</h1><span class="sub" id="revSub"></span></header>
     <div id="revHome" class="stack">
       <div class="stats" id="stats"></div>
@@ -198,7 +211,7 @@ details summary{cursor:pointer;font-weight:700}
         <button class="btn primary" id="genBtn">Write story</button>
         <div id="genStatus"></div>
       </div>
-      <p class="muted" id="aiOff" hidden style="margin:0">Writing new stories and adventures uses Claude, which is available when you open this page in the Claude app or on claude.ai while signed in.</p>
+      <p class="muted" id="aiOff" hidden style="margin:0">Writing new stories and adventures uses Claude, which isn't switched on for this server yet.</p>
       <div class="eyebrow">Your stories</div>
       <div class="storylist" id="storyList"></div>
     </div>
@@ -234,17 +247,18 @@ details summary{cursor:pointer;font-weight:700}
       <details class="panel">
         <summary>Backup</summary>
         <div class="stack" style="margin-top:12px">
-          <p class="muted" style="margin:0;font-size:.92rem">Your words and review history live only in this browser. Copy a backup to keep somewhere safe, or paste one to restore it on another device.</p>
+          <p class="muted" style="margin:0;font-size:.92rem">Your words and review history are saved to your account and follow you to any device you sign in on. Copy a backup to keep somewhere safe. Restoring one replaces everything in your account.</p>
           <button class="btn" id="copyBackup">Copy backup</button>
           <textarea id="restoreText" placeholder="Paste a backup here"></textarea>
           <button class="btn" id="restoreBtn">Restore from backup</button>
         </div>
       </details>
+      <p class="muted" style="margin:0;font-size:.88rem">Signed in as <b id="meName"></b> · <button class="btn ghost small" id="logoutBtn" style="padding:2px 4px">Sign out</button></p>
     </div>
   </section>
 </div>
 
-<nav class="tabs" aria-label="Sections">
+<nav class="tabs" aria-label="Sections" hidden>
   <button data-v="review" aria-current="page"><svg><use href="#i-cards"/></svg>Repaso</button>
   <button data-v="stories"><svg><use href="#i-book"/></svg>Cuentos</button>
   <button data-v="adv"><svg><use href="#i-path"/></svg>Aventura</button>
@@ -371,13 +385,67 @@ function fresh(){
   return { words:{}, cards:{}, log:[], newDay:{date:"",n:0}, settings:{newPerDay:10, production:true}, stories:[], adv:null };
 }
 let S;
-function load(){
-  try { const raw = localStorage.getItem(LS); if (raw) { S = Object.assign(fresh(), JSON.parse(raw)); return; } } catch (e) {}
-  S = fresh(); seedStarter();
+
+/* ---------- server sync: S stays in memory; changed items are diffed against the last sync and sent ---------- */
+async function api(path, body, opts){
+  const r = await fetch("api/" + path, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), ...opts });
+  if (r.status === 401) { showLogin(); throw { code: "signed_out" }; }
+  if (!r.ok) throw { code: "http_" + r.status };
+  return r.json();
 }
-let saveT;
-function save(){ clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) {} }, 150); }
-function saveNow(){ clearTimeout(saveT); try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) {} }
+function itemsOf(s){
+  const m = new Map();
+  for (const [k, w] of Object.entries(s.words)) m.set("word\t" + k, JSON.stringify(w));
+  for (const [k, c] of Object.entries(s.cards)) m.set("card\t" + k, JSON.stringify(c));
+  for (const st of s.stories) m.set("story\t" + st.id, JSON.stringify(st));
+  for (const k of ["settings", "newDay", "adv"]) m.set("meta\t" + k, JSON.stringify(s[k] ?? null));
+  return m;
+}
+const lastLogT = s => s.log.reduce((m, l) => Math.max(m, l.t), 0);
+let shadow = new Map(), logT = 0, stamp = 0, flushing = false, again = false, saveT, failNoted = false;
+function adopt(d){ S = Object.assign(fresh(), d.S); shadow = itemsOf(S); logT = lastLogT(S); stamp = d.stamp; }
+async function loadState(){
+  const d = await api("state");
+  adopt(d);
+  if (d.empty) { seedStarter(); saveNow(); }
+}
+function save(){ clearTimeout(saveT); saveT = setTimeout(flush, 500); }
+function saveNow(){ clearTimeout(saveT); return flush(); }
+function changes(){
+  const cur = itemsOf(S), put = [], del = [];
+  for (const [k, v] of cur) if (shadow.get(k) !== v) put.push([...k.split("\t"), v]);
+  for (const k of shadow.keys()) if (!cur.has(k)) del.push(k.split("\t"));
+  const log = S.log.filter(l => l.t > logT);
+  return { cur, put, del, log, any: put.length + del.length + log.length > 0 };
+}
+async function flush(keepalive){
+  if (!S) return;
+  if (flushing) { again = true; return; }
+  const { cur, put, del, log, any } = changes();
+  if (!any) return;
+  flushing = true;
+  try {
+    const r = await api("sync", { put, del, log }, keepalive ? { keepalive: true } : undefined);
+    shadow = cur; logT = Math.max(logT, lastLogT({ log })); stamp = r.stamp;
+    if (failNoted) { failNoted = false; toast("Saved"); }
+  } catch (e) {
+    if (e?.code !== "signed_out") { if (!failNoted) toast("Can't reach the server. Will keep trying."); failNoted = true; clearTimeout(saveT); saveT = setTimeout(flush, 8000); }
+  }
+  flushing = false;
+  if (again) { again = false; flush(); }
+}
+document.addEventListener("visibilitychange", async () => {
+  if (!S) return;
+  if (document.visibilityState === "hidden") { clearTimeout(saveT); flush(true); return; }
+  // back in view: pick up changes made on another device, unless something here is still unsaved
+  try {
+    const r = await api("stamp");
+    if (r.stamp === stamp || flushing || changes().any) return;
+    await loadState();
+    const busy = !$("#revSession").hidden || !$("#matchView").hidden || !$("#storyRead").hidden || !$("#sheet").hidden;
+    if (!busy) show(curTab);
+  } catch (e) {}
+});
 
 const ART = /^(el|la|los|las|un|una)\s+/i;
 function keyOf(es){ return String(es||"").trim().toLowerCase().replace(ART, "").replace(/[¿?¡!.,;:]/g, "").trim(); }
@@ -396,7 +464,6 @@ function removeWord(k){ delete S.words[k]; delete S.cards[k+"|r"]; delete S.card
 function seedStarter(){
   STARTER.split("\n").forEach(l => { const [es,en,pos,g] = l.split("|"); addWord(es,en,pos,(g||"").trim(),"starter"); });
 }
-load();
 
 /* ---------- scheduler (SM-2 style with learning steps) ---------- */
 const STEPS = [1, 10]; // minutes
@@ -473,7 +540,47 @@ document.addEventListener("click", e => { const b = e.target.closest("[data-spea
 
 /* ---------- Claude (sample capability) ---------- */
 let AI = null;
-(async () => { try { if (window.claude?.use) AI = await window.claude.use("sample"); } catch (e) {} renderAIState(); })();
+/* Claude through this site's server: same interface as window.claude.use("sample") */
+function serverAI(){
+  async function call(prompt, opts = {}){
+    let r;
+    try { r = await fetch("api/ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt, tier: opts.modelTier === "quick" ? "quick" : "default" }), signal: opts.signal }); }
+    catch (e) { throw { code: e?.name === "AbortError" ? "cancelled" : "upstream_error" }; }
+    if (!r.ok) throw { code: r.status === 401 ? "not_granted" : r.status === 429 ? "rate_limited" : "upstream_error" };
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    let buf = "", text = "", done = false;
+    try {
+      for (;;) {
+        const { done: end, value } = await rd.read(); if (end) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, i); buf = buf.slice(i + 1); if (!line) continue;
+          const ev = JSON.parse(line);
+          if (ev.error) throw { code: ev.error };
+          if (ev.done) done = true;
+          if (ev.t) { text += ev.t; opts.onText?.({ text, delta: ev.t }); }
+        }
+      }
+    } catch (e) { if (e?.code) throw e; throw { code: opts.signal?.aborted ? "cancelled" : "upstream_error" }; }
+    if (!done) throw { code: opts.signal?.aborted ? "cancelled" : "upstream_error" };
+    return { text };
+  }
+  call.json = async (prompt, opts) => parseLoose((await call(prompt, opts)).text);
+  return call;
+}
+function parseLoose(text){
+  const tries = [text, (text.match(/```(?:json)?\s*([\s\S]*?)```/) || [])[1]];
+  const a = text.search(/[[{]/), b = Math.max(text.lastIndexOf("}"), text.lastIndexOf("]"));
+  if (a >= 0 && b > a) tries.push(text.slice(a, b + 1));
+  for (const t of tries) { if (t == null) continue; try { return JSON.parse(t); } catch (e) {} }
+  throw { code: "invalid_json" };
+}
+async function initAI(serverHasAI){
+  try { if (window.claude?.use) AI = await window.claude.use("sample"); } catch (e) {}
+  if (!AI && serverHasAI) AI = serverAI();
+  renderAIState();
+}
 function renderAIState(){
   const on = !!AI;
   $("#genPanel").hidden = !on; $("#aiOff").hidden = on;
@@ -481,9 +588,8 @@ function renderAIState(){
 }
 function errCopy(e){
   const c = e?.code;
-  if (c === "not_granted" || c === "sampling_disabled") { return "Claude isn't allowed for this page. You can change that in the page's permissions."; }
-  if (c === "rate_limited") return "Too many requests right now. Try again in a minute.";
-  if (c === "session_expired") return "Your session expired. Sign in to Claude again.";
+  if (c === "not_granted" || c === "sampling_disabled" || c === "session_expired") { return "You've been signed out. Open your login link again."; }
+  if (c === "rate_limited") return "Too many requests right now. Try again in a while.";
   if (c === "refused") return "Claude didn't write that one. Try a different topic.";
   if (c === "invalid_json") return "The reply came back garbled. Try again.";
   return "Something went wrong reaching Claude. Try again.";
@@ -585,7 +691,9 @@ function bindReader(host, sents){
 
 /* ---------- tabs ---------- */
 const views = { review: "#v-review", stories: "#v-stories", adv: "#v-adv", words: "#v-words" };
+let curTab = "review";
 function show(v){
+  curTab = v; $("#v-login").hidden = true; $("#bootMsg").hidden = true; document.querySelector("nav.tabs").hidden = false;
   Object.entries(views).forEach(([k, sel]) => $(sel).hidden = k !== v);
   document.querySelectorAll("nav.tabs button").forEach(b => { if (b.dataset.v === v) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
   if (v === "review") renderReviewHome();
@@ -790,7 +898,7 @@ function renderAdv(){
       <div class="eyebrow">Pick a starting point</div>
       <div class="stack" id="premises">${PREMISES.map((p, i) => `<button class="choice" data-i="${i}" aria-pressed="${i === advPick}" style="${i === advPick ? "background:var(--accent-soft)" : "border-color:var(--line)"}">${esc(p[0])}<small>${esc(p[1])}</small></button>`).join("")}</div>
       <label class="field">Or describe your own<input type="text" id="advCustom" placeholder="a road trip through Chile with a talking parrot"></label>
-      ${AI ? `<button class="btn primary" id="advStart">Begin</button>` : `<p class="muted" style="margin:0">Adventures are written by Claude, which is available when you open this page in the Claude app or on claude.ai while signed in.</p>`}
+      ${AI ? `<button class="btn primary" id="advStart">Begin</button>` : `<p class="muted" style="margin:0">Adventures are written by Claude, which isn't switched on for this server yet.</p>`}
       <div id="advStatus"></div>`;
     $("#premises").onclick = e => { const b = e.target.closest("[data-i]"); if (b) { advPick = +b.dataset.i; renderAdv(); } };
     const st = $("#advStart");
@@ -963,19 +1071,64 @@ $("#copyBackup").onclick = async () => {
   try { await navigator.clipboard.writeText(data); toast("Backup copied"); }
   catch (e) { const t = $("#restoreText"); t.value = data; t.select(); toast("Select-all and copy the text below"); }
 };
-$("#restoreBtn").onclick = () => {
+$("#restoreBtn").onclick = async () => {
+  let d;
+  try { d = JSON.parse($("#restoreText").value); if (!d || d.app !== "palabraviva" || !d.S || !d.S.words) throw 0; }
+  catch (e) { toast("That doesn't look like a Palabra Viva backup"); return; }
+  const btn = $("#restoreBtn"); btn.disabled = true; clearTimeout(saveT);
   try {
-    const d = JSON.parse($("#restoreText").value);
-    if (!d || d.app !== "palabraviva" || !d.S || !d.S.words) throw 0;
-    S = Object.assign(fresh(), d.S); saveNow(); $("#restoreText").value = ""; renderWords(); toast(`Restored ${Object.keys(S.words).length} words`);
-  } catch (e) { toast("That doesn't look like a Palabra Viva backup"); }
+    adopt(await api("restore", { S: Object.assign(fresh(), d.S) }));
+    $("#restoreText").value = ""; renderWords(); toast(`Restored ${Object.keys(S.words).length} words`);
+  } catch (e) { if (e?.code !== "signed_out") toast("Restore didn't go through. Your account is unchanged."); }
+  btn.disabled = false;
+};
+
+/* ---------- sign in ---------- */
+function showLogin(){
+  S = null;
+  Object.values(views).forEach(sel => $(sel).hidden = true);
+  document.querySelector("nav.tabs").hidden = true; $("#bootMsg").hidden = true; closeSheet();
+  $("#v-login").hidden = false;
+}
+async function signIn(token){
+  const r = await fetch("api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
+  return r.ok;
+}
+$("#loginBtn").onclick = async () => {
+  const v = $("#loginLink").value.trim(), token = (v.match(/login=([\w-]+)/) || [, v])[1];
+  if (!token) return;
+  $("#loginBtn").disabled = true;
+  try {
+    if (await signIn(token)) { $("#loginLink").value = ""; $("#loginStatus").innerHTML = ""; await boot(); }
+    else $("#loginStatus").innerHTML = `<p class="err">That link didn't work. Ask for a new one.</p>`;
+  } catch (e) { $("#loginStatus").innerHTML = `<p class="err">Can't reach the server. Try again.</p>`; }
+  $("#loginBtn").disabled = false;
+};
+$("#logoutBtn").onclick = async () => {
+  await saveNow();
+  try { await fetch("api/logout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }); } catch (e) {}
+  showLogin();
 };
 
 /* ---------- boot ---------- */
-let startTab = "review";
-try { startTab = localStorage.getItem(LS+":tab") || "review"; } catch (e) {}
-if (!views[startTab]) startTab = "review";
-show(startTab);
+async function boot(){
+  const m = location.hash.match(/login=([\w-]+)/);
+  if (m) { history.replaceState(null, "", location.pathname + location.search); try { await signIn(m[1]); } catch (e) {} }
+  let me;
+  try { me = await api("me"); await loadState(); }
+  catch (e) {
+    if (e?.code === "signed_out") return;
+    $("#bootMsg").textContent = "Can't reach the server right now. Check your connection and reload."; $("#bootMsg").hidden = false; return;
+  }
+  $("#meName").textContent = me.name;
+  initAI(me.ai);
+  let startTab = "review";
+  try { startTab = localStorage.getItem(LS+":tab") || "review"; } catch (e) {}
+  if (!views[startTab]) startTab = "review";
+  show(startTab);
+}
+window.addEventListener("hashchange", () => { if (/login=/.test(location.hash)) boot(); });
+boot();
 </script>
 
 </body>

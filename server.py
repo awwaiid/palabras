@@ -1,0 +1,408 @@
+#!/usr/bin/env python3
+"""Palabra Viva server: serves index.html, stores each learner's state in sqlite,
+and proxies Claude so the browser never holds an API key.
+
+    python3 server.py                 run the server (PORT, default 8080)
+    python3 server.py adduser NAME    create a learner and print their login link
+    python3 server.py link NAME       print another login link for NAME (old ones keep working)
+    python3 server.py revoke NAME     sign NAME out everywhere (drops all their links)
+    python3 server.py users           list learners with word counts and last use
+    python3 server.py export NAME     print NAME's state as a backup (same shape as the app's Copy backup)
+    python3 server.py import NAME     replace NAME's state from a backup on stdin
+
+Environment: PV_DB (sqlite path), PV_PUBLIC (public URL of the app, for links),
+PV_BASE (path prefix behind the proxy, for the cookie), ANTHROPIC_API_KEY,
+PV_AI_DAILY (Claude calls per learner per day).
+"""
+import gzip
+import hashlib
+import json
+import os
+import secrets
+import sqlite3
+import sys
+import time
+from datetime import date
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DB = os.environ.get("PV_DB", os.path.join(HERE, "data", "palabra.db"))
+PUBLIC = os.environ.get("PV_PUBLIC", "http://localhost:8080").rstrip("/")
+BASE = os.environ.get("PV_BASE", "").rstrip("/")
+AI_DAILY = int(os.environ.get("PV_AI_DAILY", "200"))
+COOKIE = "pv_token"
+LOG_RETURN = 3000
+KINDS = {"word", "card", "story", "meta"}
+
+# modelTier from the app → (model, effort, extra request fields)
+MODELS = {
+    "quick": ("claude-haiku-5-5", "low", {}),
+    "default": ("claude-sonnet-5-5", "medium", {
+        "extra_headers": {"anthropic-beta": "server-side-fallback-2026-07-01"},
+        "extra_body": {"fallbacks": "default"},
+    }),
+}
+
+_claude = None
+
+
+def claude():
+    global _claude
+    if _claude is None and os.environ.get("ANTHROPIC_API_KEY"):
+        import anthropic
+        _claude = anthropic.Anthropic()
+    return _claude
+
+
+def now_ms():
+    return int(time.time() * 1000)
+
+
+def db():
+    con = sqlite3.connect(DB, timeout=10)
+    con.execute("PRAGMA foreign_keys=ON")
+    return con
+
+
+def init_db():
+    os.makedirs(os.path.dirname(DB), exist_ok=True)
+    con = db()
+    con.execute("PRAGMA journal_mode=WAL")
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, created INTEGER NOT NULL, stamp INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS tokens (hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), created INTEGER NOT NULL, last_used INTEGER);
+    CREATE TABLE IF NOT EXISTS items (user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (user_id, kind, id));
+    CREATE TABLE IF NOT EXISTS log (user_id INTEGER NOT NULL REFERENCES users(id), t INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (user_id, t));
+    CREATE TABLE IF NOT EXISTS ai_usage (user_id INTEGER NOT NULL REFERENCES users(id), day TEXT NOT NULL, calls INTEGER NOT NULL DEFAULT 0, in_tok INTEGER NOT NULL DEFAULT 0, out_tok INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, day));
+    """)
+    con.commit()
+    con.close()
+
+
+def token_hash(tok):
+    return hashlib.sha256(tok.encode()).hexdigest()
+
+
+def new_link(con, user_id):
+    tok = secrets.token_urlsafe(24)
+    con.execute("INSERT INTO tokens (hash, user_id, created) VALUES (?,?,?)", (token_hash(tok), user_id, now_ms()))
+    return f"{PUBLIC}/#login={tok}"
+
+
+def user_by_token(con, tok):
+    if not tok:
+        return None
+    h = token_hash(tok)
+    row = con.execute("SELECT u.id, u.name FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.hash = ?", (h,)).fetchone()
+    if row:
+        con.execute("UPDATE tokens SET last_used = ? WHERE hash = ?", (now_ms(), h))
+        con.commit()
+    return row
+
+
+def user_by_name(con, name):
+    row = con.execute("SELECT id, name FROM users WHERE name = ?", (name,)).fetchone()
+    if not row:
+        sys.exit(f"no such user: {name}")
+    return row
+
+
+# ---------- state <-> rows ----------
+
+def load_state(con, uid):
+    S = {"words": {}, "cards": {}, "stories": [], "log": []}
+    rows = con.execute("SELECT kind, id, json FROM items WHERE user_id = ?", (uid,)).fetchall()
+    for kind, id_, js in rows:
+        v = json.loads(js)
+        if kind == "word":
+            S["words"][id_] = v
+        elif kind == "card":
+            S["cards"][id_] = v
+        elif kind == "story":
+            S["stories"].append(v)
+        elif kind == "meta":
+            S[id_] = v
+    S["stories"].sort(key=lambda s: (s.get("created") or 0, s.get("id") or ""))
+    logs = con.execute("SELECT json FROM log WHERE user_id = ? ORDER BY t DESC LIMIT ?", (uid, LOG_RETURN)).fetchall()
+    S["log"] = [json.loads(js) for (js,) in reversed(logs)]
+    stamp = con.execute("SELECT stamp FROM users WHERE id = ?", (uid,)).fetchone()[0]
+    return S, stamp, not rows
+
+
+def state_items(S):
+    """Split an app state object into (kind, id, json) rows, the same way the client does."""
+    out = []
+    for k, w in (S.get("words") or {}).items():
+        out.append(("word", k, json.dumps(w, ensure_ascii=False)))
+    for k, c in (S.get("cards") or {}).items():
+        out.append(("card", k, json.dumps(c, ensure_ascii=False)))
+    for st in S.get("stories") or []:
+        if isinstance(st, dict) and st.get("id"):
+            out.append(("story", str(st["id"]), json.dumps(st, ensure_ascii=False)))
+    for k in ("settings", "newDay", "adv"):
+        if k in S:
+            out.append(("meta", k, json.dumps(S[k], ensure_ascii=False)))
+    return out
+
+
+def bump(con, uid):
+    stamp = now_ms()
+    con.execute("UPDATE users SET stamp = MAX(stamp + 1, ?) WHERE id = ?", (stamp, uid))
+    return con.execute("SELECT stamp FROM users WHERE id = ?", (uid,)).fetchone()[0]
+
+
+def apply_sync(con, uid, body):
+    ts = now_ms()
+    for kind, id_, js in body.get("put") or []:
+        if kind not in KINDS:
+            raise ValueError(f"bad kind {kind!r}")
+        json.loads(js)
+        con.execute("INSERT INTO items (user_id, kind, id, json, updated) VALUES (?,?,?,?,?) "
+                    "ON CONFLICT (user_id, kind, id) DO UPDATE SET json = excluded.json, updated = excluded.updated",
+                    (uid, kind, str(id_), js, ts))
+    for kind, id_ in body.get("del") or []:
+        con.execute("DELETE FROM items WHERE user_id = ? AND kind = ? AND id = ?", (uid, kind, str(id_)))
+    for entry in body.get("log") or []:
+        con.execute("INSERT OR IGNORE INTO log (user_id, t, json) VALUES (?,?,?)",
+                    (uid, int(entry["t"]), json.dumps(entry, ensure_ascii=False)))
+    return bump(con, uid)
+
+
+def replace_state(con, uid, S):
+    if not isinstance(S, dict) or not isinstance(S.get("words"), dict):
+        raise ValueError("not a Palabra Viva state")
+    ts = now_ms()
+    con.execute("DELETE FROM items WHERE user_id = ?", (uid,))
+    con.execute("DELETE FROM log WHERE user_id = ?", (uid,))
+    con.executemany("INSERT INTO items (user_id, kind, id, json, updated) VALUES (?,?,?,?,?)",
+                    [(uid, k, i, js, ts) for k, i, js in state_items(S)])
+    con.executemany("INSERT OR IGNORE INTO log (user_id, t, json) VALUES (?,?,?)",
+                    [(uid, int(e["t"]), json.dumps(e, ensure_ascii=False)) for e in S.get("log") or [] if isinstance(e, dict) and "t" in e])
+    return bump(con, uid)
+
+
+# ---------- HTTP ----------
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "palabra-viva"
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("%s %s\n" % (self.log_date_time_string(), fmt % args))
+
+    def send_json(self, obj, status=200, headers=None):
+        body = json.dumps(obj, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        if len(body) > 2048 and "gzip" in (self.headers.get("Accept-Encoding") or ""):
+            body = gzip.compress(body, 6)
+            self.send_header("Content-Encoding", "gzip")
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def cookie_token(self):
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == COOKIE:
+                return v
+        return None
+
+    def set_cookie(self, tok, max_age):
+        return {"Set-Cookie": f"{COOKIE}={tok}; Path={BASE or ''}/; Max-Age={max_age}; HttpOnly; Secure; SameSite=Lax"}
+
+    def read_json(self):
+        if not (self.headers.get("Content-Type") or "").startswith("application/json"):
+            raise ValueError("expected application/json")
+        n = int(self.headers.get("Content-Length") or 0)
+        return json.loads(self.rfile.read(n) or b"{}")
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path in ("/", "/index.html"):
+            with open(os.path.join(HERE, "index.html"), "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/health":
+            return self.send_json({"ok": True})
+        if not path.startswith("/api/"):
+            return self.send_json({"error": "not_found"}, 404)
+        con = db()
+        try:
+            user = user_by_token(con, self.cookie_token())
+            if path == "/api/me":
+                if not user:
+                    return self.send_json({"error": "signed_out"}, 401)
+                return self.send_json({"name": user[1], "ai": bool(os.environ.get("ANTHROPIC_API_KEY"))})
+            if not user:
+                return self.send_json({"error": "signed_out"}, 401)
+            if path == "/api/state":
+                S, stamp, empty = load_state(con, user[0])
+                return self.send_json({"S": S, "stamp": stamp, "empty": empty})
+            if path == "/api/stamp":
+                return self.send_json({"stamp": con.execute("SELECT stamp FROM users WHERE id = ?", (user[0],)).fetchone()[0]})
+            self.send_json({"error": "not_found"}, 404)
+        finally:
+            con.close()
+
+    def do_POST(self):
+        path = self.path.split("?", 1)[0]
+        try:
+            body = self.read_json()
+        except ValueError as e:
+            return self.send_json({"error": str(e)}, 400)
+        con = db()
+        try:
+            if path == "/api/login":
+                user = user_by_token(con, str(body.get("token") or ""))
+                if not user:
+                    return self.send_json({"error": "bad_link"}, 401)
+                return self.send_json({"name": user[1]}, headers=self.set_cookie(body["token"], 10 * 365 * 86400))
+            if path == "/api/logout":
+                return self.send_json({"ok": True}, headers=self.set_cookie("", 0))
+            user = user_by_token(con, self.cookie_token())
+            if not user:
+                return self.send_json({"error": "signed_out"}, 401)
+            uid = user[0]
+            if path == "/api/sync":
+                try:
+                    with con:
+                        stamp = apply_sync(con, uid, body)
+                except (ValueError, KeyError, TypeError) as e:
+                    return self.send_json({"error": str(e)}, 400)
+                return self.send_json({"stamp": stamp})
+            if path == "/api/restore":
+                try:
+                    with con:
+                        stamp = replace_state(con, uid, body.get("S"))
+                except (ValueError, KeyError, TypeError) as e:
+                    return self.send_json({"error": str(e)}, 400)
+                S, stamp, _ = load_state(con, uid)
+                return self.send_json({"S": S, "stamp": stamp})
+            if path == "/api/ai":
+                return self.ai(con, user, body)
+            self.send_json({"error": "not_found"}, 404)
+        finally:
+            con.close()
+
+    def ai(self, con, user, body):
+        client = claude()
+        if not client:
+            return self.send_json({"error": "ai_off"}, 503)
+        prompt = str(body.get("prompt") or "")
+        if not prompt or len(prompt) > 60000:
+            return self.send_json({"error": "bad_prompt"}, 400)
+        uid, day = user[0], date.today().isoformat()
+        with con:
+            con.execute("INSERT INTO ai_usage (user_id, day) VALUES (?,?) ON CONFLICT DO NOTHING", (uid, day))
+            calls = con.execute("SELECT calls FROM ai_usage WHERE user_id = ? AND day = ?", (uid, day)).fetchone()[0]
+            if calls >= AI_DAILY:
+                return self.send_json({"error": "rate_limited"}, 429)
+            con.execute("UPDATE ai_usage SET calls = calls + 1 WHERE user_id = ? AND day = ?", (uid, day))
+        tier = body.get("tier") if body.get("tier") in MODELS else "default"
+        model, effort, extra = MODELS[tier]
+
+        # One JSON object per line: {"t": text} as it streams, then {"done": stop_reason} or {"error": code}.
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        def emit(obj):
+            self.wfile.write((json.dumps(obj, ensure_ascii=False) + "\n").encode())
+            self.wfile.flush()
+
+        import anthropic
+        usage = None
+        try:
+            with client.messages.stream(model=model, max_tokens=32000, output_config={"effort": effort},
+                                        messages=[{"role": "user", "content": prompt}], **extra) as stream:
+                for text in stream.text_stream:
+                    emit({"t": text})
+                msg = stream.get_final_message()
+                usage = msg.usage
+                emit({"error": "refused"} if msg.stop_reason == "refusal" else {"done": msg.stop_reason})
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except anthropic.RateLimitError:
+            self.safe_emit(emit, {"error": "rate_limited"})
+        except anthropic.APIStatusError as e:
+            self.log_message("claude %s: %s", e.status_code, e.message)
+            self.safe_emit(emit, {"error": "upstream_error"})
+        except anthropic.APIConnectionError as e:
+            self.log_message("claude connection: %s", e)
+            self.safe_emit(emit, {"error": "upstream_error"})
+        if usage:
+            with con:
+                con.execute("UPDATE ai_usage SET in_tok = in_tok + ?, out_tok = out_tok + ? WHERE user_id = ? AND day = ?",
+                            (usage.input_tokens, usage.output_tokens, uid, day))
+            self.log_message("ai %s %s in=%d out=%d", user[1], model, usage.input_tokens, usage.output_tokens)
+        self.close_connection = True
+
+    @staticmethod
+    def safe_emit(emit, obj):
+        try:
+            emit(obj)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+# ---------- CLI ----------
+
+def cli(args):
+    con = db()
+    cmd = args[0]
+    if cmd == "adduser" and len(args) == 2:
+        with con:
+            cur = con.execute("INSERT INTO users (name, created) VALUES (?,?)", (args[1], now_ms()))
+            print(new_link(con, cur.lastrowid))
+    elif cmd == "link" and len(args) == 2:
+        with con:
+            print(new_link(con, user_by_name(con, args[1])[0]))
+    elif cmd == "revoke" and len(args) == 2:
+        with con:
+            n = con.execute("DELETE FROM tokens WHERE user_id = ?", (user_by_name(con, args[1])[0],)).rowcount
+        print(f"revoked {n} link(s)")
+    elif cmd == "users":
+        for name, words, last, calls in con.execute("""
+            SELECT u.name,
+                   (SELECT COUNT(*) FROM items i WHERE i.user_id = u.id AND i.kind = 'word'),
+                   (SELECT MAX(last_used) FROM tokens t WHERE t.user_id = u.id),
+                   (SELECT COALESCE(SUM(calls), 0) FROM ai_usage a WHERE a.user_id = u.id)
+            FROM users u ORDER BY u.name"""):
+            seen = time.strftime("%Y-%m-%d %H:%M", time.localtime(last / 1000)) if last else "never"
+            print(f"{name:16} {words:5} words  {calls:5} ai calls  last seen {seen}")
+    elif cmd == "export" and len(args) == 2:
+        S, _, _ = load_state(con, user_by_name(con, args[1])[0])
+        S["log"] = [json.loads(js) for (js,) in con.execute("SELECT json FROM log WHERE user_id = ? ORDER BY t", (user_by_name(con, args[1])[0],))]
+        print(json.dumps({"app": "palabraviva", "v": 1, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "S": S}, ensure_ascii=False))
+    elif cmd == "import" and len(args) == 2:
+        d = json.load(sys.stdin)
+        with con:
+            replace_state(con, user_by_name(con, args[1])[0], d.get("S", d))
+        print(f"imported {len(d.get('S', d)['words'])} words")
+    else:
+        sys.exit(__doc__)
+
+
+def main():
+    init_db()
+    if len(sys.argv) > 1:
+        return cli(sys.argv[1:])
+    port = int(os.environ.get("PORT", "8080"))
+    srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    print(f"listening on {port}", flush=True)
+    srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
