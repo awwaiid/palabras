@@ -5,7 +5,7 @@ around the parts of Duolingo that work and without the parts that exist to keep 
 
 | Review | Flashcard | Story | Voice |
 |---|---|---|---|
-| ![Review home with stats](docs/screenshots/repaso.png) | ![English to Spanish card with a personal connection note](docs/screenshots/tarjeta.png) | ![A story with a tapped word explained](docs/screenshots/cuento.png) | ![Choosing a Latin American voice, dark mode](docs/screenshots/voz.png) |
+| ![Review home with stats](docs/screenshots/repaso.png) | ![English to Spanish card with a personal connection note](docs/screenshots/tarjeta.png) | ![A story with a tapped word explained](docs/screenshots/cuento.png) | ![Choosing a Latin American voice](docs/screenshots/voz.png) |
 
 ## What it's for
 
