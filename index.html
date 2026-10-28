@@ -94,6 +94,7 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 .urow .linkbox{display:flex;gap:6px;align-items:center}
 .urow .linkbox input{flex:1;min-width:0;font-size:.82rem;padding:8px 10px}
 a.btn{text-decoration:none;color:inherit;display:inline-block}
+.speakpair{display:inline-flex;gap:8px;flex-shrink:0}
 .vlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .vrow{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;border-bottom:1px solid var(--line)}
 .vrow:last-child{border-bottom:0}
@@ -167,6 +168,9 @@ details summary{cursor:pointer;font-weight:700}
   <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 5c3-1.5 6-1.5 9 1 3-2.5 6-2.5 9-1v14c-3-1.5-6-1.5-9 1-3-2.5-6-2.5-9-1z"/><path d="M12 6v14"/></symbol>
   <symbol id="i-path" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></symbol>
+  <symbol id="i-turtle" viewBox="0.8 5.2 22.4 14.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 15.5c0-4.2 3.1-7.5 7.5-7.5s7.5 3.3 7.5 7.5z"/><path d="M6.8 15.5c.5-2.4 2-3.8 3.7-3.8s3.2 1.4 3.7 3.8"/><path d="M18 14.5c.4-1.6 1.3-2.5 2.6-2.5a1.4 1.4 0 0 1 0 2.8H18"/><path d="M6 15.5v2.5M15 15.5v2.5"/></symbol>
   <symbol id="i-speak" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
 </svg>
 
@@ -590,26 +594,28 @@ const ttsVoice = () => S?.settings?.voice || voiceList[0]?.id || "device";
 const ttsSpeed = () => String(S?.settings?.speed ?? 1);
 const useTTS = () => TTS && ttsVoice() !== "device" && Date.now() > ttsDownUntil;
 function stopSpeech(){ stopCur?.(false); stopCur = null; player.pause(); try { speechSynthesis.cancel(); } catch (e) {} }
-function deviceSpeak(text, done){
-  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = esVoice?.lang || "es-MX"; if (esVoice) u.voice = esVoice; u.rate = 0.9 * +ttsSpeed(); u.onend = u.onerror = () => done(true); speechSynthesis.speak(u); }
+const SLOWEST = "0.7";
+function deviceSpeak(text, done, speed){
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = esVoice?.lang || "es-MX"; if (esVoice) u.voice = esVoice; u.rate = 0.9 * +speed; u.onend = u.onerror = () => done(true); speechSynthesis.speak(u); }
   catch (e) { toast("Speech isn't available in this browser"); done(false); }
 }
 /* resolves true when the text finished playing, false when something else interrupted it */
-function speak(text){
+function speak(text, speed = ttsSpeed()){
   stopSpeech();
   return new Promise(resolve => {
     let over = false; const finish = ok => { if (!over) { over = true; if (stopCur === finish) stopCur = null; resolve(ok); } };
     stopCur = finish;
-    if (!useTTS()) return deviceSpeak(text, finish);
-    const fallback = () => { if (over) return; ttsDownUntil = Date.now() + 5*MIN; deviceSpeak(text, finish); };
+    if (!useTTS()) return deviceSpeak(text, finish, speed);
+    const fallback = () => { if (over) return; ttsDownUntil = Date.now() + 5*MIN; deviceSpeak(text, finish, speed); };
     player.onended = () => finish(true); player.onerror = fallback;
-    player.src = "api/tts?" + new URLSearchParams({ t: text, v: ttsVoice(), s: ttsSpeed() });
+    player.src = "api/tts?" + new URLSearchParams({ t: text, v: ttsVoice(), s: speed });
     player.play().catch(fallback);
   });
 }
 function previewVoice(url){ stopSpeech(); player.onended = player.onerror = null; player.src = url; player.play().catch(() => {}); }
-const speakBtn = (t, label) => `<button class="iconbtn" data-speak="${esc(t)}" aria-label="${esc(label||"Hear it")}"><svg><use href="#i-speak"/></svg></button>`;
-document.addEventListener("click", e => { const b = e.target.closest("[data-speak]"); if (b) { e.stopPropagation(); speak(b.dataset.speak); } });
+/* a speaker button and, beside it, a turtle that plays at the slowest speed */
+const speakBtn = (t, label) => `<span class="speakpair"><button class="iconbtn" data-speak="${esc(t)}" aria-label="${esc(label||"Hear it")}"><svg><use href="#i-speak"/></svg></button><button class="iconbtn" data-speak="${esc(t)}" data-slow="1" aria-label="${esc((label||"Hear it") + " slowly")}"><svg><use href="#i-turtle"/></svg></button></span>`;
+document.addEventListener("click", e => { const b = e.target.closest("[data-speak]"); if (b) { e.stopPropagation(); speak(b.dataset.speak, b.dataset.slow ? SLOWEST : undefined); } });
 
 /* ---------- Claude (sample capability) ---------- */
 let AI = null;
@@ -908,26 +914,28 @@ function openStory(id){
   $("#storyHome").hidden = true; const box = $("#storyRead"); box.hidden = false;
   box.innerHTML = `
     <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="sBack">‹ Stories</button>
-      <span class="row"><button class="btn small" id="sEn" aria-pressed="false">Show English</button><button class="btn small" id="sPlay">Listen</button></span></div>
+      <span class="row"><button class="btn small" id="sEn" aria-pressed="false">Show English</button><span class="speakpair"><button class="iconbtn" id="sPlay" aria-label="Listen"><svg><use href="#i-play"/></svg></button><button class="iconbtn" id="sSlow" aria-label="Listen slowly"><svg><use href="#i-turtle"/></svg></button></span></span></div>
     <article class="reader"><h2>${esc(st.title)}</h2><div class="muted" style="font-family:var(--f-ui);font-size:.9rem;margin-bottom:12px">${esc(st.titleEn||"")}</div><div id="sBody"></div></article>
     <div class="legend"><span><i class="w unk" style="padding:0">dotted</i> new to you</span><span><i style="background:var(--accent-soft)">shaded</i> still learning</span><span>Tap any word</span></div>
     ${st.builtin ? "" : `<button class="btn ghost small" id="sDel" style="align-self:flex-start;color:var(--bad)">Delete story</button>`}`;
   let showEn = false;
   const body = $("#sBody"); body.append(renderSentences(sents, false)); bindReader(body, sents);
   $("#sBack").onclick = () => { stopSpeech(); renderStoryHome(); };
-  $("#sPlay").onclick = async e => {
-    const btn = e.target;
-    if (btn.dataset.playing) { stopSpeech(); return; }
-    btn.dataset.playing = 1; btn.textContent = "Stop";
+  const playBtn = $("#sPlay"), slowBtn = $("#sSlow");
+  const listen = async speed => {
+    if (playBtn.dataset.playing) { stopSpeech(); return; }
+    playBtn.dataset.playing = 1; playBtn.innerHTML = `<svg><use href="#i-stop"/></svg>`; playBtn.setAttribute("aria-label", "Stop"); slowBtn.hidden = true;
     const ps = body.querySelectorAll("p.s");
     for (let i = 0; i < ps.length; i++) {
       ps.forEach(p => p.classList.toggle("playing", p === ps[i]));
       ps[i].scrollIntoView({ block: "nearest", behavior: "smooth" });
-      if (!await speak(sents[i].text)) break;
+      if (!await speak(sents[i].text, speed)) break;
     }
     ps.forEach(p => p.classList.remove("playing"));
-    delete btn.dataset.playing; btn.textContent = "Listen";
+    delete playBtn.dataset.playing; playBtn.innerHTML = `<svg><use href="#i-play"/></svg>`; playBtn.setAttribute("aria-label", "Listen"); slowBtn.hidden = false;
   };
+  playBtn.onclick = () => listen();
+  slowBtn.onclick = () => listen(SLOWEST);
   $("#sEn").onclick = e => { showEn = !showEn; e.target.textContent = showEn ? "Hide English" : "Show English"; body.querySelectorAll(".en").forEach(x => x.hidden = !showEn); };
   const del = $("#sDel");
   if (del) del.onclick = () => {
