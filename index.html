@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" translate="no">
+<html lang="es" translate="no">
 <head>
 <meta charset="utf-8">
 <meta name="google" content="notranslate">
@@ -39,7 +39,7 @@ button{cursor:pointer}
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);display:flex;align-items:baseline;justify-content:flex-start;gap:12px;padding-block:12px 10px;border-bottom:1px solid var(--line);margin-bottom:16px}
 header.top h1{font-family:var(--f-read);font-weight:600;font-size:1.5rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
 header.top .sub{color:var(--muted);font-size:.85rem;margin-left:auto;text-align:right}
-.fbBtn{align-self:center;flex-shrink:0;width:30px;height:30px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--muted);font-weight:700;font-size:1rem;line-height:1;padding:0;display:grid;place-items:center}
+.fbBtn{position:fixed;z-index:9;right:max(14px,env(safe-area-inset-right,0px));bottom:calc(70px + env(safe-area-inset-bottom,0px));width:34px;height:34px;box-shadow:0 2px 8px rgba(10,12,30,.12);border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--muted);font-weight:700;font-size:1rem;line-height:1;padding:0;display:grid;place-items:center}
 .fbBtn:hover{color:var(--accent);border-color:var(--accent)}
 .pill.bug{color:var(--bad);border-color:currentColor} .pill.idea{color:var(--accent);border-color:currentColor}
 h2{font-family:var(--f-read);font-weight:600;font-size:1.2rem;margin:0;text-wrap:balance}
@@ -201,7 +201,7 @@ details summary{cursor:pointer;font-weight:700}
 
   <!-- ADMIN -->
   <section id="v-admin" hidden>
-    <header class="top"><h1>Admin</h1><span class="sub" id="adminSub"></span><button class="fbBtn" data-feedback aria-label="Report a bug or share an idea" title="Report a bug or share an idea">!</button></header>
+    <header class="top"><h1>Admin</h1><span class="sub" id="adminSub"></span></header>
     <div class="stack">
       <button class="btn ghost small" id="adminBack" style="align-self:flex-start">‹ Palabras</button>
       <div class="eyebrow" id="pendingHead">Waiting for approval</div>
@@ -225,7 +225,7 @@ details summary{cursor:pointer;font-weight:700}
 
   <!-- REVIEW -->
   <section id="v-review" hidden>
-    <header class="top"><h1>Repaso</h1><span class="sub" id="revSub"></span><button class="fbBtn" data-feedback aria-label="Report a bug or share an idea" title="Report a bug or share an idea">!</button></header>
+    <header class="top"><h1>Repaso</h1><span class="sub" id="revSub"></span></header>
     <div id="revHome" class="stack">
       <div class="stats" id="stats"></div>
       <button class="btn primary block" id="startBtn">Start review</button>
@@ -248,7 +248,7 @@ details summary{cursor:pointer;font-weight:700}
 
   <!-- STORIES -->
   <section id="v-stories" hidden>
-    <header class="top"><h1>Cuentos</h1><span class="sub">Stories inside your words</span><button class="fbBtn" data-feedback aria-label="Report a bug or share an idea" title="Report a bug or share an idea">!</button></header>
+    <header class="top"><h1>Cuentos</h1><span class="sub">Stories inside your words</span></header>
     <div id="storyHome" class="stack">
       <div class="panel stack" id="genPanel">
         <h2>Write me a story</h2>
@@ -273,13 +273,13 @@ details summary{cursor:pointer;font-weight:700}
 
   <!-- ADVENTURE -->
   <section id="v-adv" hidden>
-    <header class="top"><h1>Aventura</h1><span class="sub">You choose what happens</span><button class="fbBtn" data-feedback aria-label="Report a bug or share an idea" title="Report a bug or share an idea">!</button></header>
+    <header class="top"><h1>Aventura</h1><span class="sub">You choose what happens</span></header>
     <div id="advBody" class="stack"></div>
   </section>
 
   <!-- WORDS -->
   <section id="v-words" hidden>
-    <header class="top"><h1>Palabras</h1><span class="sub" id="wordCount"></span><button class="fbBtn" data-feedback aria-label="Report a bug or share an idea" title="Report a bug or share an idea">!</button></header>
+    <header class="top"><h1>Palabras</h1><span class="sub" id="wordCount"></span></header>
     <div class="stack">
       <details class="panel" id="importBox">
         <summary>Import your Duolingo words</summary>
@@ -320,6 +320,7 @@ details summary{cursor:pointer;font-weight:700}
   </section>
 </div>
 
+<button class="fbBtn" hidden data-feedback aria-label="Report a bug or share an idea" title="Report a bug or share an idea">!</button>
 <nav class="tabs" aria-label="Sections" hidden>
   <button data-v="review" aria-current="page"><svg><use href="#i-cards"/></svg>Repaso</button>
   <button data-v="stories"><svg><use href="#i-book"/></svg>Cuentos</button>
@@ -779,7 +780,7 @@ function bindReader(host, sents){
 const views = { review: "#v-review", stories: "#v-stories", adv: "#v-adv", words: "#v-words", admin: "#v-admin" };
 let curTab = "review";
 function show(v){
-  stopSpeech(); curTab = v; $("#v-login").hidden = true; $("#bootMsg").hidden = true; document.querySelector("nav.tabs").hidden = false;
+  stopSpeech(); curTab = v; $("#v-login").hidden = true; $("#bootMsg").hidden = true; document.querySelector("nav.tabs").hidden = false; $(".fbBtn").hidden = false;
   Object.entries(views).forEach(([k, sel]) => $(sel).hidden = k !== v);
   document.querySelectorAll("nav.tabs button").forEach(b => { if (b.dataset.v === v) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
   if (v === "review") renderReviewHome();
@@ -1207,7 +1208,7 @@ $("#restoreBtn").onclick = async () => {
 function showLogin(){
   S = null;
   Object.values(views).forEach(sel => $(sel).hidden = true);
-  document.querySelector("nav.tabs").hidden = true; $("#bootMsg").hidden = true; closeSheet();
+  document.querySelector("nav.tabs").hidden = true; $(".fbBtn").hidden = true; $("#bootMsg").hidden = true; closeSheet();
   $("#v-login").hidden = false;
 }
 async function signIn(token){
