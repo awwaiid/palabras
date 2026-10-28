@@ -56,10 +56,11 @@ All under the app's base path; everything except `/`, `/health` and `api/login` 
 | `POST api/ai` | Claude, streamed as JSON lines: `{"t": text}`… then `{"done": stop_reason}` or `{"error": code}`. |
 | `GET api/voices`, `GET api/tts` | Voice list; an mp3 for `t` (text), `v` (voice id), `s` (speed). |
 | `POST api/request` | Public: ask for an account by email. Rate-limited per IP; same reply whether or not the email is known. |
-| `GET api/admin/users`, `POST api/admin/<action>` | Admins only. Actions: `activate`, `link`, `revoke`, `disable`, `enable`, `decline`, `email`, `add`. |
+| `POST api/feedback` | A bug report or idea: `kind` (`bug`/`idea`), `text`, and `context` (screen, story, card, browser, size, voice). 50 per learner per day. |
+| `GET api/admin/users`, `POST api/admin/<action>` | Admins only. Returns accounts and reports. Account actions: `activate`, `link`, `revoke`, `disable`, `enable`, `decline`, `email`, `add`; report actions: `close`, `reopen`. |
 
 Tables: `users` (with `email`, `status` = pending / active / disabled, and `admin`), `tokens` (sha256 of each login token; only an active user's tokens work), `items` (one row per word, card, story
-or meta key, holding its JSON), `log`, and `ai_usage` (Claude calls, tokens and ElevenLabs
+or meta key, holding its JSON), `log`, `feedback` (reports and ideas with their context and open/closed status; `server.py feedback` prints them as JSON Lines), and `ai_usage` (Claude calls, tokens and ElevenLabs
 characters per learner per day).
 
 ## Accounts

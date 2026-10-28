@@ -32,7 +32,7 @@ recall rate over the last 30 days.
 Paste your Duolingo word list (any messy format works) and it becomes your deck, or start from
 the built-in starter words. To join, ask for an account with your email; once it's approved
 you get a personal login link, with no password to remember, and your words and history follow
-you between phone and laptop.
+you between phone and laptop. The ! in the corner of every screen sends a bug report or an idea.
 
 ## Running your own
 

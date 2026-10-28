@@ -8,6 +8,7 @@ and proxies Claude so the browser never holds an API key.
     python3 server.py revoke NAME     sign NAME out everywhere (drops all their links)
     python3 server.py users           list learners with status, word counts and last use
     python3 server.py admin NAME      let NAME use the admin view (approve account requests, manage links)
+    python3 server.py feedback        print every bug report and idea as JSON Lines, oldest first
     python3 server.py export NAME     print NAME's state as a backup (same shape as the app's Copy backup)
     python3 server.py import NAME     replace NAME's state from a backup on stdin
 
@@ -147,6 +148,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS items (user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (user_id, kind, id));
     CREATE TABLE IF NOT EXISTS log (user_id INTEGER NOT NULL REFERENCES users(id), t INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (user_id, t));
     CREATE TABLE IF NOT EXISTS ai_usage (user_id INTEGER NOT NULL REFERENCES users(id), day TEXT NOT NULL, calls INTEGER NOT NULL DEFAULT 0, in_tok INTEGER NOT NULL DEFAULT 0, out_tok INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, day));
+    CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, text TEXT NOT NULL, context TEXT NOT NULL DEFAULT '{}', created INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open', closed INTEGER);
     """)
     if "tts_chars" not in [r[1] for r in con.execute("PRAGMA table_info(ai_usage)")]:
         con.execute("ALTER TABLE ai_usage ADD COLUMN tts_chars INTEGER NOT NULL DEFAULT 0")
@@ -212,6 +214,13 @@ def admin_users(con):
         FROM users u ORDER BY u.status = 'pending' DESC, u.created DESC""").fetchall()
     keys = ("id", "name", "email", "status", "admin", "created", "note", "words", "last_seen", "links", "ai_calls", "voice_chars")
     return [dict(zip(keys, r)) for r in rows]
+
+
+def admin_feedback(con):
+    rows = con.execute("""SELECT f.id, f.kind, f.text, f.context, f.created, f.status, f.closed, u.name
+                          FROM feedback f JOIN users u ON u.id = f.user_id ORDER BY f.created DESC""").fetchall()
+    return [{"id": i, "kind": k, "text": t, "context": json.loads(c), "created": cr, "status": s, "closed": cl, "name": n}
+            for i, k, t, c, cr, s, cl, n in rows]
 
 
 def user_by_name(con, name):
@@ -361,13 +370,14 @@ class Handler(BaseHTTPRequestHandler):
                       "tts": bool(os.environ.get("ELEVENLABS_API_KEY")), "admin": bool(user[2])}
                 if user[2]:
                     me["pending"] = con.execute("SELECT COUNT(*) FROM users WHERE status = 'pending'").fetchone()[0]
+                    me["reports"] = con.execute("SELECT COUNT(*) FROM feedback WHERE status = 'open'").fetchone()[0]
                 return self.send_json(me)
             if not user:
                 return self.send_json({"error": "signed_out"}, 401)
             if path == "/api/admin/users":
                 if not user[2]:
                     return self.send_json({"error": "forbidden"}, 403)
-                return self.send_json({"users": admin_users(con)})
+                return self.send_json({"users": admin_users(con), "feedback": admin_feedback(con)})
             if path == "/api/voices":
                 return self.send_json({"voices": voices() if os.environ.get("ELEVENLABS_API_KEY") else []})
             if path == "/api/tts":
@@ -406,6 +416,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not user[2]:
                     return self.send_json({"error": "forbidden"}, 403)
                 return self.admin_action(con, user, path.rsplit("/", 1)[1], body)
+            if path == "/api/feedback":
+                kind, text = body.get("kind"), str(body.get("text") or "").strip()
+                context = json.dumps(body.get("context") if isinstance(body.get("context"), dict) else {}, ensure_ascii=False)
+                if kind not in ("bug", "idea") or not text or len(text) > 4000 or len(context) > 4000:
+                    return self.send_json({"error": "bad_request"}, 400)
+                with con:
+                    today = con.execute("SELECT COUNT(*) FROM feedback WHERE user_id = ? AND created > ?", (uid, now_ms() - 86400000)).fetchone()[0]
+                    if today >= 50:
+                        return self.send_json({"error": "rate_limited"}, 429)
+                    con.execute("INSERT INTO feedback (user_id, kind, text, context, created) VALUES (?,?,?,?,?)", (uid, kind, text, context, now_ms()))
+                self.log_message("feedback from %s: %s", user[1], kind)
+                return self.send_json({"ok": True})
             if path == "/api/sync":
                 try:
                     with con:
@@ -446,6 +468,13 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"ok": True})
 
     def admin_action(self, con, admin, action, body):
+        if action in ("close", "reopen"):
+            with con:
+                n = con.execute("UPDATE feedback SET status = ?, closed = ? WHERE id = ?",
+                                ("closed" if action == "close" else "open", now_ms() if action == "close" else None, body.get("id"))).rowcount
+            if not n:
+                return self.send_json({"error": "no_such_report"}, 404)
+            return self.send_json({"feedback": admin_feedback(con)})
         uid = body.get("id")
         row = con.execute("SELECT id, name, email, status FROM users WHERE id = ?", (uid,)).fetchone() if uid is not None else None
         with con:
@@ -613,6 +642,9 @@ def cli(args):
             seen = time.strftime("%Y-%m-%d %H:%M", time.localtime(u["last_seen"] / 1000)) if u["last_seen"] else "never"
             flag = u["status"] + (" admin" if u["admin"] else "")
             print(f"{u['name']:16} {flag:14} {u['email'] or '':28} {u['words']:5} words  {u['ai_calls']:5} ai calls  {u['voice_chars']:7} voice chars  last seen {seen}")
+    elif cmd == "feedback":
+        for f in reversed(admin_feedback(con)):
+            print(json.dumps(f, ensure_ascii=False))
     elif cmd == "export" and len(args) == 2:
         S, _, _ = load_state(con, user_by_name(con, args[1])[0])
         S["log"] = [json.loads(js) for (js,) in con.execute("SELECT json FROM log WHERE user_id = ? ORDER BY t", (user_by_name(con, args[1])[0],))]
