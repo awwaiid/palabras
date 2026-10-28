@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Palabra Viva server: serves index.html, stores each learner's state in sqlite,
+"""Palabras server: serves index.html, stores each learner's state in sqlite,
 and proxies Claude so the browser never holds an API key.
 
     python3 server.py                 run the server (PORT, default 8080)
@@ -293,7 +293,7 @@ def apply_sync(con, uid, body):
 
 def replace_state(con, uid, S):
     if not isinstance(S, dict) or not isinstance(S.get("words"), dict):
-        raise ValueError("not a Palabra Viva state")
+        raise ValueError("not a Palabras state")
     ts = now_ms()
     con.execute("DELETE FROM items WHERE user_id = ?", (uid,))
     con.execute("DELETE FROM log WHERE user_id = ?", (uid,))
@@ -307,7 +307,7 @@ def replace_state(con, uid, S):
 # ---------- HTTP ----------
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "palabra-viva"
+    server_version = "palabras"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("%s %s\n" % (self.log_date_time_string(), fmt % args))
@@ -648,7 +648,7 @@ def cli(args):
     elif cmd == "export" and len(args) == 2:
         S, _, _ = load_state(con, user_by_name(con, args[1])[0])
         S["log"] = [json.loads(js) for (js,) in con.execute("SELECT json FROM log WHERE user_id = ? ORDER BY t", (user_by_name(con, args[1])[0],))]
-        print(json.dumps({"app": "palabraviva", "v": 1, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "S": S}, ensure_ascii=False))
+        print(json.dumps({"app": "palabras", "v": 1, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "S": S}, ensure_ascii=False))
     elif cmd == "import" and len(args) == 2:
         d = json.load(sys.stdin)
         with con:

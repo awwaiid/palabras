@@ -1,4 +1,4 @@
-# Working on Palabra Viva
+# Working on Palabras
 
 Notes for coding agents (and people) changing this repo. The README covers what the app is for;
 this covers how it is built and what must not break.

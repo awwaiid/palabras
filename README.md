@@ -1,4 +1,4 @@
-# Palabra Viva
+# Palabras
 
 A Latin American Spanish trainer for adults who want to actually learn the language, built
 around the parts of Duolingo that work and without the parts that exist to keep you on the app.

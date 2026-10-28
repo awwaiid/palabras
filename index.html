@@ -5,7 +5,7 @@
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
-<title>Palabra Viva</title>
+<title>Palabras</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -183,7 +183,7 @@ details summary{cursor:pointer;font-weight:700}
 <div class="wrap">
   <!-- SIGN IN -->
   <section id="v-login" hidden>
-    <header class="top"><h1>Palabra Viva</h1></header>
+    <header class="top"><h1>Palabras</h1></header>
     <div class="panel stack">
       <h2>Sign in</h2>
       <p class="muted" style="margin:0">Open your personal login link on this device, or paste it here.</p>
@@ -344,7 +344,7 @@ details summary{cursor:pointer;font-weight:700}
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const MIN = 6e4, HOUR = 36e5, DAY = 864e5;
-const LS = "palabraviva:v1";
+const LS = "palabras:v1";
 
 /* ---------- starter vocabulary (replaced by your Duolingo import) ---------- */
 const STARTER = `hola|hello|interjection|
@@ -1195,14 +1195,14 @@ ${chunks[i]}`, { modelTier: "quick", cache: false });
 
 /* backup */
 $("#copyBackup").onclick = async () => {
-  const data = JSON.stringify({ app: "palabraviva", v: 1, at: new Date().toISOString(), S });
+  const data = JSON.stringify({ app: "palabras", v: 1, at: new Date().toISOString(), S });
   try { await navigator.clipboard.writeText(data); toast("Backup copied"); }
   catch (e) { const t = $("#restoreText"); t.value = data; t.select(); toast("Select-all and copy the text below"); }
 };
 $("#restoreBtn").onclick = async () => {
   let d;
-  try { d = JSON.parse($("#restoreText").value); if (!d || d.app !== "palabraviva" || !d.S || !d.S.words) throw 0; }
-  catch (e) { toast("That doesn't look like a Palabra Viva backup"); return; }
+  try { d = JSON.parse($("#restoreText").value); if (!d || (d.app !== "palabras" && d.app !== "palabraviva") || !d.S || !d.S.words) throw 0; }
+  catch (e) { toast("That doesn't look like a Palabras backup"); return; }
   const btn = $("#restoreBtn"); btn.disabled = true; clearTimeout(saveT);
   try {
     adopt(await api("restore", { S: Object.assign(fresh(), d.S) }));
@@ -1310,8 +1310,8 @@ $("#fbList").onclick = async e => {
   catch (e) { if (e?.code !== "signed_out") toast("That didn't work. Try again."); b.disabled = false; }
 };
 function mailto(u, link){
-  const body = `Hi ${u.name},\n\nHere's your personal link for Palabra Viva:\n\n${link}\n\nOpen it on your phone and on any other device you want to use. It signs you in, so keep it to yourself.\n`;
-  return `mailto:${encodeURIComponent(u.email || "")}?subject=${encodeURIComponent("Your Palabra Viva link")}&body=${encodeURIComponent(body)}`;
+  const body = `Hi ${u.name},\n\nHere's your personal link for Palabras:\n\n${link}\n\nOpen it on your phone and on any other device you want to use. It signs you in, so keep it to yourself.\n`;
+  return `mailto:${encodeURIComponent(u.email || "")}?subject=${encodeURIComponent("Your Palabras link")}&body=${encodeURIComponent(body)}`;
 }
 function drawAdmin(){
   const btn = (a, u, label, cls = "") => `<button class="btn small ${cls}" data-a="${a}" data-id="${u.id}">${label}</button>`;

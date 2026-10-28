@@ -1,6 +1,6 @@
-# Palabra Viva: handoff for self-hosting
+# Palabras: handoff for self-hosting
 
-Palabra Viva is a phone-first Latin American Spanish trainer. It was built as a Claude artifact; this package moves it to Brock's own website and adds ElevenLabs voice and pronunciation practice.
+Palabras is a phone-first Latin American Spanish trainer. It was built as a Claude artifact; this package moves it to Brock's own website and adds ElevenLabs voice and pronunciation practice.
 
 ## What's here
 
@@ -18,7 +18,7 @@ There are four tabs, all in one `<script>`:
 | Aventura | Choose-your-own-adventure, written about 3–5 sentences at a time with 3 choices each, ending after about 8 parts. | `renderAdv`, `advStep` |
 | Palabras | Word list, add/edit, Duolingo import (Claude cleans up messy pasted text and falls back to `localParse`), and copy/paste backup and restore. | `renderWords`, `editWord`, `#importBtn`, `#copyBackup`, `#restoreBtn` |
 
-**State.** A single object `S` is stored in `localStorage["palabraviva:v1"]`. Its parts are: `words` (keyed by `keyOf(es)`, which strips the article), `cards`, `log`, `newDay`, `settings`, `stories`, and `adv`. Every read and write is wrapped in try/catch.
+**State.** A single object `S` is stored in `localStorage["palabras:v1"]`. Its parts are: `words` (keyed by `keyOf(es)`, which strips the article), `cards`, `log`, `newDay`, `settings`, `stories`, and `adv`. Every read and write is wrapped in try/catch.
 
 **Story data shape.** Claude returns sentences in this shape (see `TOKEN_SPEC`): `{text, en, words:[{t, l, g, n}]}`. `t` is the word as written in the sentence, `l` is the lemma, `g` is the meaning in context, and `n` is a grammar note. The reader matches each `t` in order inside `text`.
 
