@@ -55,10 +55,22 @@ All under the app's base path; everything except `/`, `/health` and `api/login` 
 | `POST api/sync`, `POST api/restore` | Save changed items; replace everything from a backup. |
 | `POST api/ai` | Claude, streamed as JSON lines: `{"t": text}`… then `{"done": stop_reason}` or `{"error": code}`. |
 | `GET api/voices`, `GET api/tts` | Voice list; an mp3 for `t` (text), `v` (voice id), `s` (speed). |
+| `POST api/request` | Public: ask for an account by email. Rate-limited per IP; same reply whether or not the email is known. |
+| `GET api/admin/users`, `POST api/admin/<action>` | Admins only. Actions: `activate`, `link`, `revoke`, `disable`, `enable`, `decline`, `email`, `add`. |
 
-Tables: `users`, `tokens` (sha256 of each login token), `items` (one row per word, card, story
+Tables: `users` (with `email`, `status` = pending / active / disabled, and `admin`), `tokens` (sha256 of each login token; only an active user's tokens work), `items` (one row per word, card, story
 or meta key, holding its JSON), `log`, and `ai_usage` (Claude calls, tokens and ElevenLabs
 characters per learner per day).
+
+## Accounts
+
+Sign-in is a personal link (`#login=<token>`) that the app trades for a long-lived HttpOnly
+cookie. Tokens are stored hashed, so a link can't be shown again: "New link" in the admin view
+makes another one, and older links keep working until "Sign out everywhere". Anyone can request
+an account from the sign-in screen; it waits as `pending` until an admin activates it and sends
+the link by hand (the admin view has Copy and a prefilled Email button). `server.py admin NAME`
+makes someone an admin. Email is the account's identity, so moving to Google sign-in later means
+matching the Google email to `users.email`.
 
 ## Claude and ElevenLabs
 

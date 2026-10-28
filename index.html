@@ -50,7 +50,7 @@ h2{font-family:var(--f-read);font-weight:600;font-size:1.2rem;margin:0;text-wrap
 .btn.small{padding:6px 10px;font-size:.88rem}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.block{width:100%}
-input[type=text],input[type=search],textarea,select{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+input[type=text],input[type=search],input[type=email],textarea,select{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 textarea{min-height:110px;resize:vertical}
 label.field{display:flex;flex-direction:column;gap:4px;font-size:.88rem;color:var(--muted);font-weight:700}
 
@@ -88,6 +88,12 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 .reader h2{font-size:1.6rem;margin-bottom:2px}
 .reader p.s{margin:0 0 .35em;border-radius:6px}
 .reader p.s.playing{outline:2px solid var(--accent);outline-offset:4px}
+.ulist{display:flex;flex-direction:column;gap:8px}
+.urow{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.urow .meta{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
+.urow .linkbox{display:flex;gap:6px;align-items:center}
+.urow .linkbox input{flex:1;min-width:0;font-size:.82rem;padding:8px 10px}
+a.btn{text-decoration:none;color:inherit;display:inline-block}
 .vlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .vrow{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;border-bottom:1px solid var(--line)}
 .vrow:last-child{border-bottom:0}
@@ -174,6 +180,34 @@ details summary{cursor:pointer;font-weight:700}
       <input type="text" id="loginLink" placeholder="https://…/palabras/#login=…" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button class="btn primary" id="loginBtn">Sign in</button>
       <div id="loginStatus"></div>
+    </div>
+    <div class="panel stack" style="margin-top:12px">
+      <h2>New here?</h2>
+      <p class="muted" style="margin:0">Leave your email and you'll get a personal link once your account is ready.</p>
+      <label class="field">Email<input type="email" id="reqEmail" autocomplete="email" autocapitalize="off" spellcheck="false"></label>
+      <label class="field">Your name (optional)<input type="text" id="reqName" autocomplete="name"></label>
+      <button class="btn" id="reqBtn">Request an account</button>
+      <div id="reqStatus"></div>
+    </div>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="v-admin" hidden>
+    <header class="top"><h1>Admin</h1><span class="sub" id="adminSub"></span></header>
+    <div class="stack">
+      <button class="btn ghost small" id="adminBack" style="align-self:flex-start">‹ Palabras</button>
+      <div class="eyebrow" id="pendingHead">Waiting for approval</div>
+      <div class="ulist" id="pendingList"></div>
+      <div class="eyebrow">Learners</div>
+      <div class="ulist" id="userList"></div>
+      <details class="panel">
+        <summary>Add a learner</summary>
+        <div class="stack" style="margin-top:12px">
+          <label class="field">Name<input type="text" id="addName"></label>
+          <label class="field">Email<input type="email" id="addEmail" autocapitalize="off" spellcheck="false"></label>
+          <button class="btn primary" id="addBtn">Add and make a link</button>
+        </div>
+      </details>
     </div>
   </section>
   <p class="muted" id="bootMsg" style="margin:24px 0" hidden></p>
@@ -270,7 +304,7 @@ details summary{cursor:pointer;font-weight:700}
           <button class="btn" id="restoreBtn">Restore from backup</button>
         </div>
       </details>
-      <p class="muted" style="margin:0;font-size:.88rem">Signed in as <b id="meName"></b> · <button class="btn ghost small" id="logoutBtn" style="padding:2px 4px">Sign out</button></p>
+      <p class="muted" style="margin:0;font-size:.88rem">Signed in as <b id="meName"></b> · <button class="btn ghost small" id="logoutBtn" style="padding:2px 4px">Sign out</button><span id="adminEntry" hidden> · <button class="btn ghost small" id="adminBtn" style="padding:2px 4px">Admin</button></span></p>
     </div>
   </section>
 </div>
@@ -729,7 +763,7 @@ function bindReader(host, sents){
 }
 
 /* ---------- tabs ---------- */
-const views = { review: "#v-review", stories: "#v-stories", adv: "#v-adv", words: "#v-words" };
+const views = { review: "#v-review", stories: "#v-stories", adv: "#v-adv", words: "#v-words", admin: "#v-admin" };
 let curTab = "review";
 function show(v){
   stopSpeech(); curTab = v; $("#v-login").hidden = true; $("#bootMsg").hidden = true; document.querySelector("nav.tabs").hidden = false;
@@ -739,7 +773,8 @@ function show(v){
   if (v === "stories") renderStoryHome();
   if (v === "adv") renderAdv();
   if (v === "words") renderWords();
-  try { localStorage.setItem(LS+":tab", v); } catch (e) {}
+  if (v === "admin") renderAdmin();
+  else try { localStorage.setItem(LS+":tab", v); } catch (e) {}
   window.scrollTo(0, 0);
 }
 document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.v));
@@ -1174,6 +1209,86 @@ $("#loginBtn").onclick = async () => {
   } catch (e) { $("#loginStatus").innerHTML = `<p class="err">Can't reach the server. Try again.</p>`; }
   $("#loginBtn").disabled = false;
 };
+$("#reqBtn").onclick = async () => {
+  const email = $("#reqEmail").value.trim(), name = $("#reqName").value.trim(), st = $("#reqStatus");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.innerHTML = `<p class="err">That email doesn't look right.</p>`; return; }
+  $("#reqBtn").disabled = true;
+  try {
+    const r = await fetch("api/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, name }) });
+    if (r.status === 429) st.innerHTML = `<p class="err">Too many requests from here. Try again later.</p>`;
+    else if (!r.ok) st.innerHTML = `<p class="err">That didn't go through. Check the email and try again.</p>`;
+    else { $("#reqEmail").value = ""; $("#reqName").value = ""; st.innerHTML = `<p style="margin:0"><b>Thanks!</b> <span class="muted">You'll get an email with your link once your account is ready.</span></p>`; }
+  } catch (e) { st.innerHTML = `<p class="err">Can't reach the server. Try again.</p>`; }
+  $("#reqBtn").disabled = false;
+};
+
+/* ---------- admin ---------- */
+let adminUsers = [], linkFor = null;
+const when = ms => !ms ? "never" : Date.now() - ms < MIN ? "just now" : fmtGap(Date.now() - ms) + " ago";
+async function renderAdmin(){
+  try { adminUsers = (await api("admin/users")).users; }
+  catch (e) { if (e?.code !== "signed_out") $("#userList").innerHTML = `<p class="err">Couldn't load accounts.</p>`; return; }
+  drawAdmin();
+}
+function mailto(u, link){
+  const body = `Hi ${u.name},\n\nHere's your personal link for Palabra Viva:\n\n${link}\n\nOpen it on your phone and on any other device you want to use. It signs you in, so keep it to yourself.\n`;
+  return `mailto:${encodeURIComponent(u.email || "")}?subject=${encodeURIComponent("Your Palabra Viva link")}&body=${encodeURIComponent(body)}`;
+}
+function drawAdmin(){
+  const btn = (a, u, label, cls = "") => `<button class="btn small ${cls}" data-a="${a}" data-id="${u.id}">${label}</button>`;
+  const row = u => {
+    const self = u.name === $("#meName").textContent;
+    const pill = u.status === "active" ? `<span class="pill rev">active${u.admin ? " · admin" : ""}</span>` : u.status === "pending" ? `<span class="pill lrn">waiting</span>` : `<span class="pill">disabled</span>`;
+    const facts = u.status === "pending"
+      ? `asked ${when(u.created)}${u.note ? ` · “${esc(u.note)}”` : ""}`
+      : `${u.words} words · last seen ${when(u.last_seen)} · ${u.links} link${u.links === 1 ? "" : "s"} · ${u.ai_calls} Claude calls · ${u.voice_chars.toLocaleString()} voice chars`;
+    const acts = u.status === "pending" ? btn("activate", u, "Activate", "primary") + btn("decline", u, "Decline", "ghost")
+      : u.status === "active" ? btn("link", u, "New link") + (self ? "" : btn("revoke", u, "Sign out everywhere", "ghost") + btn("disable", u, "Disable", "ghost"))
+      : btn("enable", u, "Enable");
+    const lk = linkFor && linkFor.id === u.id ? `<div class="linkbox"><input type="text" readonly value="${esc(linkFor.link)}"><button class="btn small primary" data-a="copy">Copy</button>${u.email ? `<a class="btn small" href="${esc(mailto(u, linkFor.link))}">Email</a>` : ""}</div>` : "";
+    return `<div class="urow"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><b style="overflow-wrap:anywhere">${esc(u.name)}</b>${pill}</div>
+      <div class="meta">${u.email ? esc(u.email) : "no email"} · <button class="btn ghost small" data-a="setemail" data-id="${u.id}" style="padding:0 2px;font-size:.85rem">${u.email ? "change" : "add"}</button></div>
+      <div class="meta">${facts}</div>${lk}<div class="row">${acts}</div></div>`;
+  };
+  const pend = adminUsers.filter(u => u.status === "pending"), rest = adminUsers.filter(u => u.status !== "pending");
+  $("#pendingHead").hidden = !pend.length;
+  $("#pendingList").innerHTML = pend.map(row).join("");
+  $("#userList").innerHTML = rest.map(row).join("");
+  $("#adminSub").textContent = `${rest.filter(u => u.status === "active").length} active · ${pend.length} waiting`;
+  $("#adminBtn").textContent = pend.length ? `Admin · ${pend.length} waiting` : "Admin";
+}
+const ADMIN_DONE = { activate: "Activated. Copy the link and send it.", link: "New link ready. Older links still work.", revoke: "Signed out everywhere", disable: "Disabled", enable: "Enabled", decline: "Request declined", email: "Email saved", add: "Added. Copy the link and send it." };
+async function adminAct(a, body){
+  try {
+    const d = await api("admin/" + a, body);
+    adminUsers = d.users; linkFor = d.link ? { id: d.id ?? body.id, link: d.link } : null;
+    drawAdmin(); toast(ADMIN_DONE[a]);
+    return true;
+  } catch (e) {
+    if (e?.code !== "signed_out") toast(e?.code === "http_409" ? "That email is already used by another account" : e?.code === "http_400" ? "That email doesn't look right" : "That didn't work. Try again.");
+    return false;
+  }
+}
+$("#v-admin").addEventListener("click", async e => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  const a = b.dataset.a, id = +b.dataset.id, u = adminUsers.find(x => x.id === id);
+  if (a === "copy") {
+    const inp = b.parentElement.querySelector("input");
+    try { await navigator.clipboard.writeText(inp.value); toast("Link copied"); } catch (err) { inp.select(); toast("Select the link and copy it"); }
+    return;
+  }
+  if (a === "setemail") { const v = prompt(`Email for ${u.name}`, u.email || ""); if (v !== null) adminAct("email", { id, email: v.trim() }); return; }
+  if (["decline", "revoke", "disable"].includes(a) && !b.dataset.armed) { b.dataset.armed = 1; b.textContent = "Tap again: " + b.textContent.toLowerCase(); return; }
+  adminAct(a, { id });
+});
+$("#addBtn").onclick = async () => {
+  const name = $("#addName").value.trim(), email = $("#addEmail").value.trim();
+  if (!name && !email) { toast("Give a name or an email"); return; }
+  if (await adminAct("add", { name, email })) { $("#addName").value = ""; $("#addEmail").value = ""; window.scrollTo(0, 0); }
+};
+$("#adminBtn").onclick = () => show("admin");
+$("#adminBack").onclick = () => show("words");
+
 $("#logoutBtn").onclick = async () => {
   await saveNow();
   try { await fetch("api/logout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }); } catch (e) {}
@@ -1191,6 +1306,8 @@ async function boot(){
     $("#bootMsg").textContent = "Can't reach the server right now. Check your connection and reload."; $("#bootMsg").hidden = false; return;
   }
   $("#meName").textContent = me.name;
+  $("#adminEntry").hidden = !me.admin;
+  if (me.admin) $("#adminBtn").textContent = me.pending ? `Admin · ${me.pending} waiting` : "Admin";
   initAI(me.ai);
   TTS = !!me.tts;
   if (TTS) api("voices").then(d => { voiceList = d.voices || []; if (curTab === "words") renderVoices(); }).catch(() => {});

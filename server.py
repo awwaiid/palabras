@@ -6,7 +6,8 @@ and proxies Claude so the browser never holds an API key.
     python3 server.py adduser NAME    create a learner and print their login link
     python3 server.py link NAME       print another login link for NAME (old ones keep working)
     python3 server.py revoke NAME     sign NAME out everywhere (drops all their links)
-    python3 server.py users           list learners with word counts and last use
+    python3 server.py users           list learners with status, word counts and last use
+    python3 server.py admin NAME      let NAME use the admin view (approve account requests, manage links)
     python3 server.py export NAME     print NAME's state as a backup (same shape as the app's Copy backup)
     python3 server.py import NAME     replace NAME's state from a backup on stdin
 
@@ -19,6 +20,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import secrets
 import sqlite3
 import sys
@@ -148,6 +150,12 @@ def init_db():
     """)
     if "tts_chars" not in [r[1] for r in con.execute("PRAGMA table_info(ai_usage)")]:
         con.execute("ALTER TABLE ai_usage ADD COLUMN tts_chars INTEGER NOT NULL DEFAULT 0")
+    cols = [r[1] for r in con.execute("PRAGMA table_info(users)")]
+    for col, decl in (("email", "TEXT"), ("status", "TEXT NOT NULL DEFAULT 'active'"),  # pending | active | disabled
+                      ("admin", "INTEGER NOT NULL DEFAULT 0"), ("note", "TEXT NOT NULL DEFAULT ''")):
+        if col not in cols:
+            con.execute(f"ALTER TABLE users ADD COLUMN {col} {decl}")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (lower(email)) WHERE email IS NOT NULL")
     con.commit()
     con.close()
 
@@ -166,11 +174,44 @@ def user_by_token(con, tok):
     if not tok:
         return None
     h = token_hash(tok)
-    row = con.execute("SELECT u.id, u.name FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.hash = ?", (h,)).fetchone()
+    row = con.execute("SELECT u.id, u.name, u.admin FROM tokens t JOIN users u ON u.id = t.user_id "
+                      "WHERE t.hash = ? AND u.status = 'active'", (h,)).fetchone()
     if row:
         con.execute("UPDATE tokens SET last_used = ? WHERE hash = ?", (now_ms(), h))
         con.commit()
     return row
+
+
+def unique_name(con, want):
+    base = "".join(c for c in want.strip() if c.isalnum() or c in " ._-")[:40].strip() or "learner"
+    name, n = base, 2
+    while con.execute("SELECT 1 FROM users WHERE name = ?", (name,)).fetchone():
+        name, n = f"{base} {n}", n + 1
+    return name
+
+
+EMAIL_OK = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_requests = {}              # client address → recent account-request times
+
+
+def request_allowed(addr):
+    now = time.time()
+    recent = [t for t in _requests.get(addr, []) if now - t < 3600]
+    _requests[addr] = recent + [now]
+    return len(recent) < 5
+
+
+def admin_users(con):
+    rows = con.execute("""
+        SELECT u.id, u.name, u.email, u.status, u.admin, u.created, u.note,
+               (SELECT COUNT(*) FROM items i WHERE i.user_id = u.id AND i.kind = 'word'),
+               (SELECT MAX(last_used) FROM tokens t WHERE t.user_id = u.id),
+               (SELECT COUNT(*) FROM tokens t WHERE t.user_id = u.id),
+               (SELECT COALESCE(SUM(calls), 0) FROM ai_usage a WHERE a.user_id = u.id),
+               (SELECT COALESCE(SUM(tts_chars), 0) FROM ai_usage a WHERE a.user_id = u.id)
+        FROM users u ORDER BY u.status = 'pending' DESC, u.created DESC""").fetchall()
+    keys = ("id", "name", "email", "status", "admin", "created", "note", "words", "last_seen", "links", "ai_calls", "voice_chars")
+    return [dict(zip(keys, r)) for r in rows]
 
 
 def user_by_name(con, name):
@@ -316,10 +357,17 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/me":
                 if not user:
                     return self.send_json({"error": "signed_out"}, 401)
-                return self.send_json({"name": user[1], "ai": bool(os.environ.get("ANTHROPIC_API_KEY")),
-                                       "tts": bool(os.environ.get("ELEVENLABS_API_KEY"))})
+                me = {"name": user[1], "ai": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                      "tts": bool(os.environ.get("ELEVENLABS_API_KEY")), "admin": bool(user[2])}
+                if user[2]:
+                    me["pending"] = con.execute("SELECT COUNT(*) FROM users WHERE status = 'pending'").fetchone()[0]
+                return self.send_json(me)
             if not user:
                 return self.send_json({"error": "signed_out"}, 401)
+            if path == "/api/admin/users":
+                if not user[2]:
+                    return self.send_json({"error": "forbidden"}, 403)
+                return self.send_json({"users": admin_users(con)})
             if path == "/api/voices":
                 return self.send_json({"voices": voices() if os.environ.get("ELEVENLABS_API_KEY") else []})
             if path == "/api/tts":
@@ -348,10 +396,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"name": user[1]}, headers=self.set_cookie(body["token"], 10 * 365 * 86400))
             if path == "/api/logout":
                 return self.send_json({"ok": True}, headers=self.set_cookie("", 0))
+            if path == "/api/request":
+                return self.request_account(con, body)
             user = user_by_token(con, self.cookie_token())
             if not user:
                 return self.send_json({"error": "signed_out"}, 401)
             uid = user[0]
+            if path.startswith("/api/admin/"):
+                if not user[2]:
+                    return self.send_json({"error": "forbidden"}, 403)
+                return self.admin_action(con, user, path.rsplit("/", 1)[1], body)
             if path == "/api/sync":
                 try:
                     with con:
@@ -372,6 +426,71 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "not_found"}, 404)
         finally:
             con.close()
+
+    def request_account(self, con, body):
+        """Anyone may ask for an account; it waits as 'pending' until an admin activates it.
+        The reply is the same whether or not the email is already known."""
+        email = str(body.get("email") or "").strip()[:200]
+        if not EMAIL_OK.match(email):
+            return self.send_json({"error": "bad_email"}, 400)
+        if not request_allowed(self.headers.get("X-Forwarded-For") or self.client_address[0]):
+            return self.send_json({"error": "rate_limited"}, 429)
+        with con:
+            known = con.execute("SELECT 1 FROM users WHERE lower(email) = lower(?)", (email,)).fetchone()
+            pending = con.execute("SELECT COUNT(*) FROM users WHERE status = 'pending'").fetchone()[0]
+            if not known and pending < 100:
+                name = unique_name(con, str(body.get("name") or "") or email.split("@")[0])
+                con.execute("INSERT INTO users (name, email, status, note, created) VALUES (?,?,?,?,?)",
+                            (name, email, "pending", str(body.get("note") or "")[:500], now_ms()))
+                self.log_message("account request: %s <%s>", name, email)
+        return self.send_json({"ok": True})
+
+    def admin_action(self, con, admin, action, body):
+        uid = body.get("id")
+        row = con.execute("SELECT id, name, email, status FROM users WHERE id = ?", (uid,)).fetchone() if uid is not None else None
+        with con:
+            if action == "add":
+                email = str(body.get("email") or "").strip() or None
+                if email and not EMAIL_OK.match(email):
+                    return self.send_json({"error": "bad_email"}, 400)
+                if email and con.execute("SELECT 1 FROM users WHERE lower(email) = lower(?)", (email,)).fetchone():
+                    return self.send_json({"error": "email_taken"}, 409)
+                name = unique_name(con, str(body.get("name") or "") or (email or "").split("@")[0])
+                new = con.execute("INSERT INTO users (name, email, status, created) VALUES (?,?,'active',?)", (name, email, now_ms())).lastrowid
+                return self.send_json({"link": new_link(con, new), "id": new, "users": admin_users(con)})
+            if not row:
+                return self.send_json({"error": "no_such_user"}, 404)
+            if row[0] == admin[0] and action in ("disable", "revoke", "decline"):
+                return self.send_json({"error": "not_yourself"}, 400)
+            out = {}
+            if action in ("activate", "enable"):
+                con.execute("UPDATE users SET status = 'active' WHERE id = ?", (row[0],))
+                if action == "activate":
+                    out["link"] = new_link(con, row[0])
+            elif action == "link":
+                if row[3] != "active":
+                    return self.send_json({"error": "not_active"}, 400)
+                out["link"] = new_link(con, row[0])
+            elif action == "revoke":
+                con.execute("DELETE FROM tokens WHERE user_id = ?", (row[0],))
+            elif action == "disable":
+                con.execute("UPDATE users SET status = 'disabled' WHERE id = ?", (row[0],))
+            elif action == "decline":
+                if row[3] != "pending":
+                    return self.send_json({"error": "not_pending"}, 400)
+                con.execute("DELETE FROM users WHERE id = ?", (row[0],))
+            elif action == "email":
+                email = str(body.get("email") or "").strip() or None
+                if email and not EMAIL_OK.match(email):
+                    return self.send_json({"error": "bad_email"}, 400)
+                try:
+                    con.execute("UPDATE users SET email = ? WHERE id = ?", (email, row[0]))
+                except sqlite3.IntegrityError:
+                    return self.send_json({"error": "email_taken"}, 409)
+            else:
+                return self.send_json({"error": "not_found"}, 404)
+        out["users"] = admin_users(con)
+        return self.send_json(out)
 
     def speech(self, con, user):
         if not os.environ.get("ELEVENLABS_API_KEY"):
@@ -485,16 +604,15 @@ def cli(args):
         with con:
             n = con.execute("DELETE FROM tokens WHERE user_id = ?", (user_by_name(con, args[1])[0],)).rowcount
         print(f"revoked {n} link(s)")
+    elif cmd == "admin" and len(args) == 2:
+        with con:
+            con.execute("UPDATE users SET admin = 1, status = 'active' WHERE id = ?", (user_by_name(con, args[1])[0],))
+        print(f"{args[1]} is an admin")
     elif cmd == "users":
-        for name, words, last, calls, chars in con.execute("""
-            SELECT u.name,
-                   (SELECT COUNT(*) FROM items i WHERE i.user_id = u.id AND i.kind = 'word'),
-                   (SELECT MAX(last_used) FROM tokens t WHERE t.user_id = u.id),
-                   (SELECT COALESCE(SUM(calls), 0) FROM ai_usage a WHERE a.user_id = u.id),
-                   (SELECT COALESCE(SUM(tts_chars), 0) FROM ai_usage a WHERE a.user_id = u.id)
-            FROM users u ORDER BY u.name"""):
-            seen = time.strftime("%Y-%m-%d %H:%M", time.localtime(last / 1000)) if last else "never"
-            print(f"{name:16} {words:5} words  {calls:5} ai calls  {chars:7} voice chars  last seen {seen}")
+        for u in admin_users(con):
+            seen = time.strftime("%Y-%m-%d %H:%M", time.localtime(u["last_seen"] / 1000)) if u["last_seen"] else "never"
+            flag = u["status"] + (" admin" if u["admin"] else "")
+            print(f"{u['name']:16} {flag:14} {u['email'] or '':28} {u['words']:5} words  {u['ai_calls']:5} ai calls  {u['voice_chars']:7} voice chars  last seen {seen}")
     elif cmd == "export" and len(args) == 2:
         S, _, _ = load_state(con, user_by_name(con, args[1])[0])
         S["log"] = [json.loads(js) for (js,) in con.execute("SELECT json FROM log WHERE user_id = ? ORDER BY t", (user_by_name(con, args[1])[0],))]

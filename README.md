@@ -30,8 +30,9 @@ recall rate over the last 30 days.
 ## Using it
 
 Paste your Duolingo word list (any messy format works) and it becomes your deck, or start from
-the built-in starter words. Everyone gets their own account through a personal login link, with
-nothing to sign up for, and your words and history follow you between phone and laptop.
+the built-in starter words. To join, ask for an account with your email; once it's approved
+you get a personal login link, with no password to remember, and your words and history follow
+you between phone and laptop.
 
 ## Running your own
 
@@ -43,6 +44,7 @@ docker run -d --name palabras -p 8080:8080 -v palabras:/data \
   -e PV_PUBLIC=http://localhost:8080 \
   -e ANTHROPIC_API_KEY=… -e ELEVENLABS_API_KEY=… palabras
 docker exec palabras python3 server.py adduser yourname # prints your login link
+docker exec palabras python3 server.py admin yourname   # lets you approve account requests in the app
 ```
 
 Both keys are optional. Without Claude, stories and adventures stay hidden; without ElevenLabs,
