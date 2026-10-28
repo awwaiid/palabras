@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Palabra Viva</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400;1,7..72,600&display=swap">
+<style>
+/* Layout: one-column phone app, sticky title band, fixed bottom tab bar; stories set like a printed reader. Accent: jacaranda violet. */
+:root{
+  --paper:#F5F6FA; --card:#FFFFFF; --ink:#1C2140; --muted:#5B6285; --line:#DCDFEC;
+  --accent:#6A4CB0; --accent-ink:#FFFFFF; --accent-soft:#ECE7F8;
+  --good:#2C7A58; --hard:#A8641E; --bad:#B12F4A;
+  --masc:#2D62B0; --fem:#B5396F;
+  --f-read:"Literata", Georgia, "Times New Roman", serif;
+  --f-ui:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#121428; --card:#1B1E3A; --ink:#E8E9F4; --muted:#9CA1C4; --line:#2D3258;
+  --accent:#AE92EE; --accent-ink:#17122B; --accent-soft:#2A2452;
+  --good:#5FC89B; --hard:#E2A462; --bad:#F27B94; --masc:#86AEF2; --fem:#F28DBA; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --paper:#121428; --card:#1B1E3A; --ink:#E8E9F4; --muted:#9CA1C4; --line:#2D3258;
+  --accent:#AE92EE; --accent-ink:#17122B; --accent-soft:#2A2452;
+  --good:#5FC89B; --hard:#E2A462; --bad:#F27B94; --masc:#86AEF2; --fem:#F28DBA; color-scheme:dark }
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-ui);font-size:16px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px calc(96px + env(safe-area-inset-bottom,0px))}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-block:12px 10px;border-bottom:1px solid var(--line);margin-bottom:16px}
+header.top h1{font-family:var(--f-read);font-weight:600;font-size:1.5rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+header.top .sub{color:var(--muted);font-size:.85rem}
+h2{font-family:var(--f-read);font-weight:600;font-size:1.2rem;margin:0;text-wrap:balance}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.muted{color:var(--muted)}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 14px;font-weight:700}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.ghost{background:transparent}
+.btn.small{padding:6px 10px;font-size:.88rem}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.block{width:100%}
+input[type=text],input[type=search],textarea,select{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+textarea{min-height:110px;resize:vertical}
+label.field{display:flex;flex-direction:column;gap:4px;font-size:.88rem;color:var(--muted);font-weight:700}
+
+/* tabs */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+nav.tabs button{background:none;border:0;padding:10px 4px 12px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--muted);font-size:.78rem;font-weight:700}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button[aria-current="page"]{color:var(--accent)}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.stat b{display:block;font-family:var(--f-read);font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat span{font-size:.82rem;color:var(--muted)}
+.stat.lead{border-color:var(--accent);background:var(--accent-soft)}
+
+/* flashcard */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px 20px;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center}
+.card .dir{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.card .big{font-family:var(--f-read);font-size:2.2rem;line-height:1.2;font-weight:600;overflow-wrap:anywhere}
+.card .mid{font-size:1.25rem}
+.card hr{width:60%;border:0;border-top:1px solid var(--line);margin:4px 0}
+.g-m{color:var(--masc)} .g-f{color:var(--fem)}
+.grades{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.grades button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 2px;font-weight:700;display:flex;flex-direction:column;align-items:center;line-height:1.2}
+.grades button small{font-weight:400;color:var(--muted);font-size:.75rem;font-variant-numeric:tabular-nums}
+.grades .g0{color:var(--bad)} .grades .g1{color:var(--hard)} .grades .g2{color:var(--good)} .grades .g3{color:var(--accent)}
+.iconbtn{border:1px solid var(--line);background:var(--card);border-radius:999px;width:40px;height:40px;display:inline-grid;place-items:center;padding:0}
+.iconbtn svg{width:20px;height:20px}
+.note{width:100%;text-align:left}
+.note textarea{min-height:64px;font-size:.92rem}
+
+/* reader */
+.reader{font-family:var(--f-read);font-size:1.22rem;line-height:1.85}
+.reader h2{font-size:1.6rem;margin-bottom:2px}
+.reader p.s{margin:0 0 .35em}
+.reader .en{display:block;font-family:var(--f-ui);font-size:.9rem;line-height:1.4;color:var(--muted);margin:0 0 .9em}
+.w{background:none;border:0;padding:0 1px;margin:0 -1px;font:inherit;color:inherit;border-radius:4px;cursor:pointer}
+.w.unk{text-decoration:underline dotted var(--accent) 2px;text-underline-offset:4px}
+.w.lrn{background:var(--accent-soft)}
+.w.sel{background:var(--accent);color:var(--accent-ink)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
+.legend i{font-style:normal;padding:0 4px;border-radius:4px}
+.storylist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+.storylist button{display:flex;justify-content:space-between;gap:12px;align-items:center;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 14px}
+.storylist button:last-child{border-bottom:0}
+.storylist .t{font-family:var(--f-read);font-weight:600;font-size:1.05rem}
+.storylist small{color:var(--muted);display:block}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:.9rem}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.choices{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.choice{text-align:left;border:1px solid var(--accent);background:var(--card);border-radius:12px;padding:12px 14px;font-family:var(--f-read);font-size:1.08rem}
+.choice small{display:block;font-family:var(--f-ui);font-size:.82rem;color:var(--muted)}
+.chosen{font-family:var(--f-ui);font-size:.9rem;color:var(--accent);font-weight:700;margin:.2em 0 1em;padding-left:10px;border-left:3px solid var(--accent)}
+.progress{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.92rem}
+.spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 0.9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.err{color:var(--bad);font-size:.92rem}
+
+/* word list */
+.wlist{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.wlist button{display:grid;grid-template-columns:1fr auto;gap:2px 12px;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 14px}
+.wlist button:last-child{border-bottom:0}
+.wlist .es{font-weight:700;min-width:0;overflow-wrap:anywhere}
+.wlist .en{color:var(--muted);font-size:.9rem;grid-column:1;min-width:0;overflow-wrap:anywhere}
+.pill{grid-row:1/span 2;grid-column:2;align-self:center;font-size:.75rem;font-weight:700;border-radius:999px;padding:3px 8px;border:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill.lrn{color:var(--hard);border-color:currentColor}
+.pill.rev{color:var(--good);border-color:currentColor}
+
+/* match game */
+.match{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.match button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:12px 8px;min-height:52px;font-weight:700;overflow-wrap:anywhere}
+.match button.es{font-family:var(--f-read);font-weight:600;font-size:1.05rem}
+.match button.on{border-color:var(--accent);background:var(--accent-soft)}
+.match button.ok{opacity:.25;border-style:dashed}
+.match button.no{border-color:var(--bad);color:var(--bad)}
+
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(10,12,30,.45);z-index:20}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--card);border-top:1px solid var(--line);border-radius:18px 18px 0 0;max-height:85vh;overflow:auto;padding-top:14px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
+.sheet .inner{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 4px}
+.sheet .word{font-family:var(--f-read);font-size:1.9rem;font-weight:600;line-height:1.2}
+.sheet dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0}
+.sheet dt{color:var(--muted);font-size:.85rem;font-weight:700;padding-top:2px}
+.sheet dd{margin:0;min-width:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:8px 14px;border-radius:999px;font-size:.9rem;z-index:30}
+details summary{cursor:pointer;font-weight:700}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.stepper{display:flex;align-items:center;gap:8px}
+.stepper b{min-width:2ch;text-align:center;font-variant-numeric:tabular-nums}
+</style>
+
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-cards" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 5c3-1.5 6-1.5 9 1 3-2.5 6-2.5 9-1v14c-3-1.5-6-1.5-9 1-3-2.5-6-2.5-9-1z"/><path d="M12 6v14"/></symbol>
+  <symbol id="i-path" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
+  <symbol id="i-speak" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
+</svg>
+
+<div class="wrap">
+  <!-- REVIEW -->
+  <section id="v-review">
+    <header class="top"><h1>Repaso</h1><span class="sub" id="revSub"></span></header>
+    <div id="revHome" class="stack">
+      <div class="stats" id="stats"></div>
+      <button class="btn primary block" id="startBtn">Start review</button>
+      <p class="muted" id="nextNote" style="margin:0"></p>
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between"><h2>Emparejar</h2><span class="muted" style="font-size:.85rem">Match pairs · doesn't affect your schedule</span></div>
+        <button class="btn" id="matchBtn">Play a round</button>
+      </div>
+      <details class="panel">
+        <summary>Review settings</summary>
+        <div class="stack" style="margin-top:12px">
+          <div class="switch"><span>New words per day</span><span class="stepper"><button class="iconbtn" id="npdMinus" aria-label="Fewer">−</button><b id="npd"></b><button class="iconbtn" id="npdPlus" aria-label="More">+</button></span></div>
+          <label class="switch"><span>Also practice English → Spanish<br><small class="muted">Added once you know a word's meaning</small></span><input type="checkbox" id="prodToggle"></label>
+        </div>
+      </details>
+    </div>
+    <div id="revSession" class="stack" hidden></div>
+    <div id="matchView" class="stack" hidden></div>
+  </section>
+
+  <!-- STORIES -->
+  <section id="v-stories" hidden>
+    <header class="top"><h1>Cuentos</h1><span class="sub">Stories inside your words</span></header>
+    <div id="storyHome" class="stack">
+      <div class="panel stack" id="genPanel">
+        <h2>Write me a story</h2>
+        <label class="field">About<input type="text" id="topic" placeholder="a rainy day in Bogotá, a lost cat, making tamales"></label>
+        <div class="row">
+          <span class="muted" style="font-size:.88rem;font-weight:700">Length</span>
+          <div class="chips" id="lenChips">
+            <button class="chip" data-n="6" aria-pressed="false">Short</button>
+            <button class="chip" data-n="10" aria-pressed="true">Medium</button>
+            <button class="chip" data-n="16" aria-pressed="false">Long</button>
+          </div>
+        </div>
+        <button class="btn primary" id="genBtn">Write story</button>
+        <div id="genStatus"></div>
+      </div>
+      <p class="muted" id="aiOff" hidden style="margin:0">Writing new stories and adventures uses Claude, which is available when you open this page in the Claude app or on claude.ai while signed in.</p>
+      <div class="eyebrow">Your stories</div>
+      <div class="storylist" id="storyList"></div>
+    </div>
+    <div id="storyRead" class="stack" hidden></div>
+  </section>
+
+  <!-- ADVENTURE -->
+  <section id="v-adv" hidden>
+    <header class="top"><h1>Aventura</h1><span class="sub">You choose what happens</span></header>
+    <div id="advBody" class="stack"></div>
+  </section>
+
+  <!-- WORDS -->
+  <section id="v-words" hidden>
+    <header class="top"><h1>Palabras</h1><span class="sub" id="wordCount"></span></header>
+    <div class="stack">
+      <details class="panel" id="importBox">
+        <summary>Import your Duolingo words</summary>
+        <div class="stack" style="margin-top:12px">
+          <p class="muted" style="margin:0;font-size:.92rem">Open Duolingo's word list (Practice Hub → Words on the website), select all, copy, and paste here. Any format works: one word per line, “palabra – meaning”, CSV, or the raw copied page.</p>
+          <textarea id="importText" placeholder="hola – hello&#10;el perro – dog&#10;comer&#10;…"></textarea>
+          <label class="switch"><span>Remove the sample starter words</span><input type="checkbox" id="dropStarter" checked></label>
+          <button class="btn primary" id="importBtn">Import</button>
+          <div id="importStatus"></div>
+        </div>
+      </details>
+      <div class="row">
+        <input type="search" id="wSearch" placeholder="Search Spanish or English" style="flex:1;min-width:0">
+        <button class="btn" id="addWordBtn">Add</button>
+      </div>
+      <div class="wlist" id="wordList"></div>
+      <p class="muted" id="wMore" style="margin:0;font-size:.88rem"></p>
+      <details class="panel">
+        <summary>Backup</summary>
+        <div class="stack" style="margin-top:12px">
+          <p class="muted" style="margin:0;font-size:.92rem">Your words and review history live only in this browser. Copy a backup to keep somewhere safe, or paste one to restore it on another device.</p>
+          <button class="btn" id="copyBackup">Copy backup</button>
+          <textarea id="restoreText" placeholder="Paste a backup here"></textarea>
+          <button class="btn" id="restoreBtn">Restore from backup</button>
+        </div>
+      </details>
+    </div>
+  </section>
+</div>
+
+<nav class="tabs" aria-label="Sections">
+  <button data-v="review" aria-current="page"><svg><use href="#i-cards"/></svg>Repaso</button>
+  <button data-v="stories"><svg><use href="#i-book"/></svg>Cuentos</button>
+  <button data-v="adv"><svg><use href="#i-path"/></svg>Aventura</button>
+  <button data-v="words"><svg><use href="#i-list"/></svg>Palabras</button>
+</nav>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true"><div class="inner" id="sheetInner"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const MIN = 6e4, HOUR = 36e5, DAY = 864e5;
+const LS = "palabraviva:v1";
+
+/* ---------- starter vocabulary (replaced by your Duolingo import) ---------- */
+const STARTER = `hola|hello|interjection|
+adiós|goodbye|interjection|
+gracias|thank you|interjection|
+por favor|please|phrase|
+sí|yes|adverb|
+no|no, not|adverb|
+el hombre|man|noun|m
+la mujer|woman|noun|f
+el niño|boy, child|noun|m
+la niña|girl|noun|f
+el perro|dog|noun|m
+el gato|cat|noun|m
+la casa|house, home|noun|f
+la comida|food, meal|noun|f
+el agua|water|noun|f
+el café|coffee|noun|m
+la leche|milk|noun|f
+el pan|bread|noun|m
+la manzana|apple|noun|f
+el jugo|juice|noun|m
+el carro|car|noun|m
+el celular|cell phone|noun|m
+la computadora|computer|noun|f
+la escuela|school|noun|f
+el trabajo|work, job|noun|m
+la ciudad|city|noun|f
+la calle|street|noun|f
+el amigo|friend (male)|noun|m
+la amiga|friend (female)|noun|f
+la familia|family|noun|f
+la mamá|mom|noun|f
+el papá|dad|noun|m
+el hermano|brother|noun|m
+la hermana|sister|noun|f
+el libro|book|noun|m
+el mercado|market|noun|m
+la playa|beach|noun|f
+el parque|park|noun|m
+el día|day|noun|m
+la noche|night|noun|f
+ser|to be (what something is)|verb|
+estar|to be (where, how)|verb|
+tener|to have|verb|
+ir|to go|verb|
+comer|to eat|verb|
+tomar|to drink, to take|verb|
+hablar|to speak|verb|
+vivir|to live|verb|
+querer|to want, to love|verb|
+gustar|to be pleasing (me gusta = I like)|verb|
+caminar|to walk|verb|
+leer|to read|verb|
+escribir|to write|verb|
+trabajar|to work|verb|
+grande|big|adjective|
+pequeño|small|adjective|
+bueno|good|adjective|
+malo|bad|adjective|
+nuevo|new|adjective|
+bonito|pretty|adjective|
+hoy|today|adverb|
+mañana|tomorrow; morning|adverb|
+ahora|now|adverb|
+también|also, too|adverb|
+pero|but|conjunction|
+y|and|conjunction|
+muy|very|adverb|
+aquí|here|adverb|
+dónde|where|question word|
+qué|what|question word|
+bien|well, fine|adverb|`;
+
+/* function words treated as known when reading */
+const FUNC = new Set("el la los las lo un una unos unas al del a de en con sin por para su sus mi mis tu tus nuestro nuestra que se le les me te nos yo tú él ella ellos ellas usted ustedes nosotros nosotras o ni si como cuando este esta esto ese esa eso".split(" "));
+
+/* ---------- built-in sample story (annotated) ---------- */
+const SAMPLE_STORY = {
+  id: "sample-mercado", title: "Un día en el mercado", titleEn: "A day at the market", builtin: true,
+  src: [
+    ["Hoy{hoy|today|adverb} Ana{Ana|Ana|name} camina{caminar|walks|caminar · present · ella} al{al|to the|a + el} mercado{mercado|market|noun · masc.} con{con|with|preposition} su{su|her|possessive} perro{perro|dog|noun · masc.}.", "Today Ana walks to the market with her dog."],
+    ["El{el|the|article · masc.} mercado{} es{ser|is|ser · present · él} grande{grande|big|adjective} y{y|and|conjunction} muy{muy|very|adverb} bonito{bonito|pretty|adjective · masc.}.", "The market is big and very pretty."],
+    ["Ana{} quiere{querer|wants|querer · present · ella (e→ie)} pan{pan|bread|noun · masc.}, leche{leche|milk|noun · fem.} y{} manzanas{manzana|apples|noun · fem. plural}.", "Ana wants bread, milk, and apples."],
+    ["—¿Dónde{dónde|where|question word} está{estar|is|estar · present · él (location)} el{} café{café|coffee|noun · masc.}? —pregunta{preguntar|asks|preguntar · present · ella} Ana{}.", "“Where is the coffee?” Ana asks."],
+    ["Un{un|a|article · masc.} hombre{hombre|man|noun · masc.} dice{decir|says|decir · present · él (irregular)}: —Está{estar|it is|estar · present · él (location)} aquí{aquí|here|adverb}, pero{pero|but|conjunction} hoy{} no{no|not|negation} tenemos{tener|we have|tener · present · nosotros} leche{}.", "A man says: “It's here, but today we don't have milk.”"],
+    ["Ana{} toma{tomar|drinks|tomar · present · ella} un{} jugo{jugo|juice|noun · masc.} y{} come{comer|eats|comer · present · ella} una{una|an|article · fem.} manzana{manzana|apple|noun · fem.}.", "Ana drinks a juice and eats an apple."],
+    ["Su{su|her|possessive} perro{} también{también|also|adverb} quiere{querer|wants|querer · present · él (e→ie)} comer{comer|to eat|infinitive}.", "Her dog also wants to eat."],
+    ["—¡No{no|no|interjection}, Toby{Toby|Toby|name}! —dice{decir|says|decir · present · ella (irregular)} Ana{}—. Las{las|the|article · fem. plural} manzanas{} no{no|not|negation} son{ser|are|ser · present · ellas} para{para|for|preposition} perros{perro|dogs|noun · masc. plural}.", "“No, Toby!” says Ana. “Apples aren't for dogs.”"]
+  ]
+};
+function parseAnnotated(src){
+  const memo = {};
+  return src.map(([raw, en]) => {
+    const words = [];
+    const text = raw.replace(/(\p{L}+)\{([^}]*)\}/gu, (m, surf, ann) => {
+      let w;
+      if (ann) { const [l, g, n] = ann.split("|"); w = { t: surf, l, g, n }; memo[surf.toLowerCase()] = w; }
+      else w = { ...(memo[surf.toLowerCase()] || { l: surf.toLowerCase(), g: "", n: "" }), t: surf };
+      words.push(w); return surf;
+    });
+    return { text, en, words };
+  });
+}
+
+/* ---------- state ---------- */
+function fresh(){
+  return { words:{}, cards:{}, log:[], newDay:{date:"",n:0}, settings:{newPerDay:10, production:true}, stories:[], adv:null };
+}
+let S;
+function load(){
+  try { const raw = localStorage.getItem(LS); if (raw) { S = Object.assign(fresh(), JSON.parse(raw)); return; } } catch (e) {}
+  S = fresh(); seedStarter();
+}
+let saveT;
+function save(){ clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) {} }, 150); }
+function saveNow(){ clearTimeout(saveT); try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) {} }
+
+const ART = /^(el|la|los|las|un|una)\s+/i;
+function keyOf(es){ return String(es||"").trim().toLowerCase().replace(ART, "").replace(/[¿?¡!.,;:]/g, "").trim(); }
+function addWord(es, en, pos, gender, source){
+  es = String(es||"").trim(); if (!es) return null;
+  const k = keyOf(es); if (!k) return null;
+  if (S.words[k]) { if (!S.words[k].en && en) S.words[k].en = en; return null; }
+  S.words[k] = { id:k, es, en:String(en||"").trim(), pos:pos||"", g:gender||"", note:"", source:source||"import", added:Date.now() };
+  ensureCards(k); return k;
+}
+function ensureCards(k){
+  if (!S.cards[k+"|r"]) S.cards[k+"|r"] = { id:k+"|r", w:k, d:"r", state:"new", due:0, ivl:0, ease:2.5, step:0, reps:0, lapses:0 };
+  if (!S.cards[k+"|p"]) S.cards[k+"|p"] = { id:k+"|p", w:k, d:"p", state:"new", due:0, ivl:0, ease:2.5, step:0, reps:0, lapses:0 };
+}
+function removeWord(k){ delete S.words[k]; delete S.cards[k+"|r"]; delete S.cards[k+"|p"]; }
+function seedStarter(){
+  STARTER.split("\n").forEach(l => { const [es,en,pos,g] = l.split("|"); addWord(es,en,pos,(g||"").trim(),"starter"); });
+}
+load();
+
+/* ---------- scheduler (SM-2 style with learning steps) ---------- */
+const STEPS = [1, 10]; // minutes
+function sched(c, g){
+  const n = { ...c }, now = Date.now();
+  if (c.state === "review") {
+    if (g === 0) { n.lapses = (c.lapses||0)+1; n.ease = Math.max(1.3, c.ease-0.2); n.ivl = Math.max(1, Math.round(c.ivl*0.5)); n.state = "relearning"; n.step = 0; n.due = now + 10*MIN; }
+    else {
+      if (g === 1) { n.ease = Math.max(1.3, c.ease-0.15); n.ivl = Math.max(c.ivl+1, c.ivl*1.2); }
+      if (g === 2) { n.ivl = Math.max(c.ivl+1, c.ivl*c.ease); }
+      if (g === 3) { n.ease = c.ease+0.15; n.ivl = Math.max(c.ivl+2, c.ivl*c.ease*1.3); }
+      n.ivl = Math.round(n.ivl); n.due = now + n.ivl*DAY;
+    }
+  } else {
+    const relearn = c.state === "relearning", step = c.state === "new" ? 0 : (c.step||0);
+    if (g === 0) { n.step = 0; n.state = relearn ? "relearning" : "learning"; n.due = now + (relearn ? 10 : STEPS[0])*MIN; }
+    else if (g === 1) { n.step = step; n.state = c.state === "new" ? "learning" : c.state; n.due = now + (step === 0 ? 6 : STEPS[step]*1.5)*MIN; }
+    else if (g === 2) {
+      if (!relearn && step+1 < STEPS.length) { n.step = step+1; n.state = "learning"; n.due = now + STEPS[step+1]*MIN; }
+      else { n.state = "review"; n.ivl = relearn ? Math.max(1, c.ivl) : 1; n.step = 0; n.due = now + n.ivl*DAY; }
+    } else { n.state = "review"; n.ivl = relearn ? Math.max(2, Math.round(c.ivl*1.5)) : 4; n.step = 0; n.due = now + n.ivl*DAY; }
+  }
+  n.reps = (c.reps||0)+1;
+  return n;
+}
+function fmtGap(ms){
+  if (ms < HOUR) return Math.max(1, Math.round(ms/MIN)) + " min";
+  if (ms < DAY) return Math.round(ms/HOUR) + " h";
+  const d = ms/DAY;
+  if (d < 31) return Math.round(d) + " d";
+  if (d < 365) return Math.round(d/30) + " mo";
+  return (d/365).toFixed(1) + " yr";
+}
+const today = () => new Date().toLocaleDateString("en-CA");
+function newLeft(){ if (S.newDay.date !== today()) S.newDay = { date: today(), n: 0 }; return Math.max(0, S.settings.newPerDay - S.newDay.n); }
+function liveCards(){ return Object.values(S.cards).filter(c => S.words[c.w] && (c.d === "r" || S.settings.production)); }
+function newCandidates(){
+  const all = liveCards();
+  return all.filter(c => c.state === "new" && (c.d === "r" || (S.cards[c.w+"|r"] && S.cards[c.w+"|r"].state === "review")))
+    .sort((a,b) => (a.d === b.d ? 0 : a.d === "p" ? -1 : 1) || S.words[a.w].added - S.words[b.w].added);
+}
+let sessionCount = 0;
+function pickNext(){
+  const now = Date.now(), cards = liveCards();
+  const due = cards.filter(c => c.state !== "new" && c.due <= now).sort((a,b) => a.due-b.due);
+  const nl = newLeft(), nc = nl > 0 ? newCandidates() : [];
+  if (nc.length && (!due.length || sessionCount % 4 === 3)) return nc[0];
+  if (due.length) return due[0];
+  const soon = cards.filter(c => (c.state === "learning" || c.state === "relearning") && c.due <= now + 20*MIN).sort((a,b) => a.due-b.due);
+  return soon[0] || null;
+}
+
+/* ---------- toast / sheet ---------- */
+let toastT;
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
+function openSheet(html, onMount){ $("#sheetInner").innerHTML = '<div class="grab"></div>' + html; $("#sheet").hidden = false; $("#scrim").hidden = false; onMount && onMount($("#sheetInner")); }
+function closeSheet(){ $("#sheet").hidden = true; $("#scrim").hidden = true; document.querySelectorAll(".w.sel").forEach(e => e.classList.remove("sel")); sheetCtl?.abort(); }
+$("#scrim").onclick = closeSheet;
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+
+/* ---------- speech ---------- */
+let esVoice = null;
+function pickVoice(){
+  try { const vs = speechSynthesis.getVoices().filter(v => /^es/i.test(v.lang));
+    esVoice = vs.find(v => /es[-_](MX|US|419|CO|AR)/i.test(v.lang)) || vs[0] || null; } catch (e) {}
+}
+try { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {}
+function speak(text){
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = esVoice?.lang || "es-MX"; if (esVoice) u.voice = esVoice; u.rate = 0.9; speechSynthesis.speak(u); }
+  catch (e) { toast("Speech isn't available in this browser"); }
+}
+const speakBtn = (t, label) => `<button class="iconbtn" data-speak="${esc(t)}" aria-label="${esc(label||"Hear it")}"><svg><use href="#i-speak"/></svg></button>`;
+document.addEventListener("click", e => { const b = e.target.closest("[data-speak]"); if (b) { e.stopPropagation(); speak(b.dataset.speak); } });
+
+/* ---------- Claude (sample capability) ---------- */
+let AI = null;
+(async () => { try { if (window.claude?.use) AI = await window.claude.use("sample"); } catch (e) {} renderAIState(); })();
+function renderAIState(){
+  const on = !!AI;
+  $("#genPanel").hidden = !on; $("#aiOff").hidden = on;
+  if ($("#v-adv").hidden === false) renderAdv();
+}
+function errCopy(e){
+  const c = e?.code;
+  if (c === "not_granted" || c === "sampling_disabled") { return "Claude isn't allowed for this page. You can change that in the page's permissions."; }
+  if (c === "rate_limited") return "Too many requests right now. Try again in a minute.";
+  if (c === "session_expired") return "Your session expired. Sign in to Claude again.";
+  if (c === "refused") return "Claude didn't write that one. Try a different topic.";
+  if (c === "invalid_json") return "The reply came back garbled. Try again.";
+  return "Something went wrong reaching Claude. Try again.";
+}
+const LATAM = "Use Latin American Spanish: ustedes (never vosotros), neutral Mexican/Colombian register, and Latin American vocabulary (carro, celular, computadora, jugo, papa, departamento).";
+function knownList(max){
+  const ws = Object.values(S.words);
+  return ws.slice(-max).map(w => keyOf(w.es)).join(", ");
+}
+function learningList(){
+  return liveCards().filter(c => c.d === "r" && (c.state === "learning" || c.state === "relearning" || (c.state === "review" && c.ivl < 7))).slice(0, 25).map(c => S.words[c.w].es).join(", ");
+}
+const TOKEN_SPEC = `Each sentence: {"text": the Spanish sentence, "en": natural English translation, "words": [ one entry for EVERY word in "text", in order, no punctuation entries: {"t": the word exactly as written in text, "l": dictionary form (infinitive for verbs, masculine singular for adjectives, singular for nouns), "g": short English meaning in this context, "n": short grammar note, e.g. "comer · present · ella", "noun · fem. plural", "ir · preterite · yo", "adjective · fem."} ]}`;
+function validSentences(arr){
+  return (Array.isArray(arr) ? arr : []).filter(s => s && typeof s.text === "string").map(s => ({
+    text: s.text, en: String(s.en||""),
+    words: (Array.isArray(s.words) ? s.words : []).filter(w => w && typeof w.t === "string" && w.t).map(w => ({ t:w.t, l:String(w.l||w.t), g:String(w.g||""), n:String(w.n||"") }))
+  }));
+}
+
+/* ---------- reading: tappable sentences ---------- */
+const isL = ch => !!ch && /\p{L}/u.test(ch);
+function findWord(text, t, from){
+  let j = text.indexOf(t, from);
+  while (j >= 0 && (isL(text[j-1]) || isL(text[j+t.length]))) j = text.indexOf(t, j+1);
+  return j;
+}
+function wordStatus(w){
+  const k = keyOf(w.l), kt = keyOf(w.t);
+  if (/name/i.test(w.n) || FUNC.has(kt) || FUNC.has(k)) return "known";
+  const wd = S.words[k] || S.words[kt];
+  if (!wd) return "unk";
+  const c = S.cards[wd.id+"|r"];
+  if (c && (c.state !== "review" || c.ivl < 7)) return "lrn";
+  return "known";
+}
+function renderSentences(sents, showEn){
+  const host = document.createElement("div");
+  sents.forEach((s, si) => {
+    const p = document.createElement("p"); p.className = "s";
+    let i = 0;
+    s.words.forEach((w, wi) => {
+      const j = findWord(s.text, w.t, i); if (j < 0) return;
+      if (j > i) p.append(s.text.slice(i, j));
+      const b = document.createElement("button"); b.type = "button";
+      const st = wordStatus(w); b.className = "w" + (st === "unk" ? " unk" : st === "lrn" ? " lrn" : "");
+      b.textContent = w.t; b.dataset.si = si; b.dataset.wi = wi;
+      p.append(b); i = j + w.t.length;
+    });
+    if (i < s.text.length) p.append(s.text.slice(i));
+    host.append(p);
+    const en = document.createElement("span"); en.className = "en"; en.textContent = s.en; en.hidden = !showEn; host.append(en);
+  });
+  return host;
+}
+let sheetCtl = null;
+function wordSheet(w, sentence){
+  const k = keyOf(w.l), have = S.words[k];
+  openSheet(`
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div class="word">${esc(w.t)}</div>${speakBtn(w.t)}</div>
+    <dl>
+      <dt>Meaning</dt><dd>${esc(w.g || have?.en || "—")}</dd>
+      <dt>Base form</dt><dd><b>${esc(w.l)}</b>${have && have.en ? ` <span class="muted">· ${esc(have.en)}</span>` : ""}</dd>
+      <dt>Grammar</dt><dd>${esc(w.n || "—")}</dd>
+      <dt>Sentence</dt><dd style="font-family:var(--f-read)">${esc(sentence.text)}<br><span class="muted" style="font-family:var(--f-ui);font-size:.9rem">${esc(sentence.en)}</span></dd>
+    </dl>
+    <div class="row">
+      ${have ? `<span class="muted">In your words</span>` : `<button class="btn primary" id="addW">Add “${esc(w.l)}” to my words</button>`}
+      ${AI ? `<button class="btn" id="explainW">Explain this form</button>` : ""}
+    </div>
+    <div id="explainOut" class="muted" style="font-size:.95rem;white-space:pre-wrap"></div>`, root => {
+      root.querySelector("#addW")?.addEventListener("click", ev => {
+        const pos = /noun/.test(w.n) ? "noun" : /adjective/.test(w.n) ? "adjective" : /infinitive|present|preterite|imperfect|future|subjunctive|command/.test(w.n) ? "verb" : "";
+        const g = /fem/.test(w.n) && pos === "noun" ? "f" : /masc/.test(w.n) && pos === "noun" ? "m" : "";
+        const es = pos === "noun" && g ? (g === "f" ? "la " : "el ") + w.l : w.l;
+        addWord(es, w.g, pos, g, "story"); save();
+        ev.target.outerHTML = `<span class="muted">Added. It will show up in Repaso.</span>`;
+        document.querySelectorAll(".reader .w").forEach(b => { if (keyOf(b.textContent) === keyOf(w.t)) b.classList.remove("unk"); });
+      });
+      root.querySelector("#explainW")?.addEventListener("click", async ev => {
+        ev.target.disabled = true; const out = root.querySelector("#explainOut"); out.textContent = "Thinking…";
+        sheetCtl = new AbortController();
+        try {
+          await AI(`A learner of Latin American Spanish tapped the word "${w.t}" in this sentence: "${sentence.text}". In 2–4 short plain-English sentences, explain what this form is (tense, person, mood or agreement), why it's used here, and give one more short example sentence in Spanish with its translation. No headings, no markdown.`,
+            { modelTier: "quick", signal: sheetCtl.signal, onText: ({ text }) => { out.textContent = text; } });
+        } catch (e) { if (e.code !== "cancelled") out.textContent = errCopy(e); }
+        ev.target.disabled = false;
+      });
+  });
+}
+function bindReader(host, sents){
+  host.addEventListener("click", e => {
+    const b = e.target.closest(".w"); if (!b) return;
+    document.querySelectorAll(".w.sel").forEach(x => x.classList.remove("sel"));
+    b.classList.add("sel");
+    const s = sents[+b.dataset.si]; wordSheet(s.words[+b.dataset.wi], s);
+  });
+}
+
+/* ---------- tabs ---------- */
+const views = { review: "#v-review", stories: "#v-stories", adv: "#v-adv", words: "#v-words" };
+function show(v){
+  Object.entries(views).forEach(([k, sel]) => $(sel).hidden = k !== v);
+  document.querySelectorAll("nav.tabs button").forEach(b => { if (b.dataset.v === v) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
+  if (v === "review") renderReviewHome();
+  if (v === "stories") renderStoryHome();
+  if (v === "adv") renderAdv();
+  if (v === "words") renderWords();
+  try { localStorage.setItem(LS+":tab", v); } catch (e) {}
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.v));
+
+/* ---------- REVIEW ---------- */
+function stats(){
+  const now = Date.now(), cards = liveCards();
+  const due = cards.filter(c => c.state !== "new" && c.due <= now).length;
+  const learning = cards.filter(c => c.state === "learning" || c.state === "relearning").length;
+  const solid = Object.keys(S.words).filter(k => (S.cards[k+"|r"]?.ivl||0) >= 21 && S.cards[k+"|r"].state === "review").length;
+  const seen = Object.keys(S.words).filter(k => S.cards[k+"|r"] && S.cards[k+"|r"].state !== "new").length;
+  const since = now - 30*DAY, rv = S.log.filter(l => l.t > since && l.rev);
+  const ret = rv.length >= 10 ? Math.round(100 * rv.filter(l => l.g > 0).length / rv.length) : null;
+  const avail = Math.min(newLeft(), newCandidates().length);
+  const upcoming = cards.filter(c => c.state !== "new" && c.due > now).sort((a,b) => a.due-b.due)[0];
+  return { due, learning, solid, seen, ret, avail, total: Object.keys(S.words).length, upcoming };
+}
+function renderReviewHome(){
+  $("#revSession").hidden = true; $("#matchView").hidden = true; $("#revHome").hidden = false;
+  const s = stats();
+  $("#revSub").textContent = `${s.total} words`;
+  $("#stats").innerHTML = `
+    <div class="stat lead"><b>${s.due}</b><span>due for review</span></div>
+    <div class="stat"><b>${s.avail}</b><span>new words ready today</span></div>
+    <div class="stat"><b>${s.solid}</b><span>solid (remembered 3+ weeks)</span></div>
+    <div class="stat"><b>${s.ret === null ? "—" : s.ret + "%"}</b><span>${s.ret === null ? "recall rate (after 10 reviews)" : "recalled on review, last 30 days"}</span></div>`;
+  const any = s.due + s.avail > 0 || !!pickNext();
+  $("#startBtn").disabled = !any;
+  $("#startBtn").textContent = any ? (s.due ? `Review ${s.due + s.avail} cards` : `Learn ${s.avail} new words`) : "Nothing due";
+  $("#nextNote").textContent = any ? `${s.seen} of ${s.total} words started. ${s.learning ? s.learning + " in short-term practice." : ""}`
+    : (s.upcoming ? `All caught up. The next card comes back in ${fmtGap(s.upcoming.due - Date.now())}.` : "Add words in Palabras to get started.");
+  $("#npd").textContent = S.settings.newPerDay;
+  $("#prodToggle").checked = S.settings.production;
+}
+$("#npdMinus").onclick = () => { S.settings.newPerDay = Math.max(0, S.settings.newPerDay - 5); save(); renderReviewHome(); };
+$("#npdPlus").onclick = () => { S.settings.newPerDay = Math.min(50, S.settings.newPerDay + 5); save(); renderReviewHome(); };
+$("#prodToggle").onchange = e => { S.settings.production = e.target.checked; save(); renderReviewHome(); };
+$("#startBtn").onclick = () => { sessionCount = 0; sessionDone = 0; startSession(); };
+
+let cur = null, sessionDone = 0;
+function wordFace(w){
+  const cls = w.g === "m" ? "g-m" : w.g === "f" ? "g-f" : "";
+  return `<span class="${cls}">${esc(w.es)}</span>`;
+}
+function posLine(w){
+  const g = w.g === "m" ? "masculine " : w.g === "f" ? "feminine " : "";
+  return (g + (w.pos || "")).trim();
+}
+function startSession(){
+  cur = pickNext();
+  $("#revHome").hidden = true; $("#revSession").hidden = false;
+  const box = $("#revSession");
+  if (!cur) {
+    box.innerHTML = `<div class="panel stack"><h2>That's everything for now</h2><p class="muted" style="margin:0">You reviewed ${sessionDone} card${sessionDone === 1 ? "" : "s"}.</p><button class="btn primary" id="doneBtn">Back</button></div>`;
+    $("#doneBtn").onclick = renderReviewHome; return;
+  }
+  const w = S.words[cur.w], rec = cur.d === "r";
+  const front = rec
+    ? `<div class="dir">What does it mean?</div><div class="big">${wordFace(w)}</div>${speakBtn(w.es)}`
+    : `<div class="dir">Say it in Spanish</div><div class="big" style="font-family:var(--f-ui)">${esc(w.en)}</div><div class="muted">${esc(posLine(w))}</div>`;
+  const isNew = cur.state === "new";
+  box.innerHTML = `
+    <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="endBtn">End</button><span class="muted" style="font-size:.85rem">${isNew ? "New word" : cur.state === "review" ? "Review" : "Practice"} · ${sessionDone} done</span></div>
+    <div class="card" id="theCard">${front}</div>
+    <button class="btn primary block" id="showBtn">Show answer</button>`;
+  $("#endBtn").onclick = renderReviewHome;
+  $("#showBtn").onclick = () => reveal(w, rec);
+}
+function reveal(w, rec){
+  const card = $("#theCard");
+  card.innerHTML += `<hr>` + (rec
+    ? `<div class="mid">${esc(w.en || "—")}</div><div class="muted">${esc(posLine(w))}</div>`
+    : `<div class="big">${wordFace(w)}</div>${speakBtn(w.es)}`) +
+    `<label class="note field">Your connection<textarea id="noteBox" placeholder="A memory, image, or person this word brings to mind">${esc(w.note)}</textarea></label>`;
+  if (!rec) speak(w.es);
+  $("#noteBox").oninput = e => { w.note = e.target.value; save(); };
+  const btns = ["Again","Hard","Good","Easy"].map((l, g) => `<button class="g${g}" data-g="${g}">${l}<small>${fmtGap(sched(cur, g).due - Date.now())}</small></button>`).join("");
+  $("#showBtn").outerHTML = `<div class="grades" id="grades">${btns}</div>`;
+  $("#grades").onclick = e => { const b = e.target.closest("[data-g]"); if (b) answer(+b.dataset.g); };
+}
+function answer(g){
+  const wasNew = cur.state === "new", wasRev = cur.state === "review";
+  const n = sched(cur, g);
+  if (n.state === "review" && n.ivl > 2 && g > 0) { const f = 1 + (Math.random()*0.1 - 0.05); n.ivl = Math.round(n.ivl * f); n.due = Date.now() + n.ivl*DAY; }
+  S.cards[cur.id] = n;
+  if (wasNew) { newLeft(); S.newDay.n++; }
+  S.log.push({ t: Date.now(), g, rev: wasRev }); if (S.log.length > 3000) S.log.splice(0, S.log.length - 3000);
+  sessionCount++; sessionDone++; save(); startSession();
+}
+
+/* match game */
+$("#matchBtn").onclick = startMatch;
+function startMatch(){
+  const pool = Object.values(S.words).filter(w => w.en);
+  const seen = pool.filter(w => S.cards[w.id+"|r"]?.state !== "new");
+  const src = seen.length >= 5 ? seen : pool;
+  if (src.length < 3) { toast("Add a few more words first"); return; }
+  const pick = src.sort(() => Math.random()-0.5).slice(0, 5);
+  const L = pick.map(w => ({ id: w.id, t: w.es })).sort(() => Math.random()-0.5);
+  const R = pick.map(w => ({ id: w.id, t: w.en.split(/[,;]/)[0] })).sort(() => Math.random()-0.5);
+  $("#revHome").hidden = true; $("#matchView").hidden = false;
+  const box = $("#matchView");
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><button class="btn ghost small" id="mBack">Back</button><span class="muted" style="font-size:.85rem" id="mInfo">Tap a Spanish word, then its meaning</span></div><div class="match" id="mGrid"></div>`;
+  const grid = $("#mGrid");
+  for (let i = 0; i < L.length; i++) grid.insertAdjacentHTML("beforeend",
+    `<button class="es" data-side="L" data-id="${esc(L[i].id)}">${esc(L[i].t)}</button><button data-side="R" data-id="${esc(R[i].id)}">${esc(R[i].t)}</button>`);
+  let sel = null, left = L.length, misses = 0;
+  grid.onclick = e => {
+    const b = e.target.closest("button"); if (!b || b.classList.contains("ok")) return;
+    if (!sel || sel.dataset.side === b.dataset.side) { sel?.classList.remove("on"); sel = b; b.classList.add("on"); if (b.dataset.side === "L") speak(b.textContent); return; }
+    if (sel.dataset.id === b.dataset.id) { sel.classList.remove("on"); sel.classList.add("ok"); b.classList.add("ok"); sel = null; left--;
+      if (!left) $("#mInfo").textContent = misses ? `Done · ${misses} miss${misses === 1 ? "" : "es"}` : "Done · no misses", grid.insertAdjacentHTML("afterend", `<button class="btn primary block" id="mAgain">Another round</button>`), $("#mAgain").onclick = startMatch;
+    } else { misses++; const a = sel; a.classList.add("no"); b.classList.add("no"); setTimeout(() => { a.classList.remove("no","on"); b.classList.remove("no"); }, 500); sel = null; }
+  };
+  $("#mBack").onclick = renderReviewHome;
+}
+
+/* ---------- STORIES ---------- */
+let storyLen = 10, genCtl = null;
+$("#lenChips").onclick = e => { const b = e.target.closest(".chip"); if (!b) return; storyLen = +b.dataset.n; document.querySelectorAll("#lenChips .chip").forEach(c => c.setAttribute("aria-pressed", c === b)); };
+function allStories(){ return [...S.stories].reverse().concat([{ ...SAMPLE_STORY }]); }
+function storySents(st){ return st.builtin ? parseAnnotated(st.src) : st.sentences; }
+function renderStoryHome(){
+  $("#storyHome").hidden = false; $("#storyRead").hidden = true;
+  $("#storyList").innerHTML = allStories().map(st => `<button data-id="${esc(st.id)}"><span><span class="t">${esc(st.title)}</span><small>${esc(st.titleEn || "")}${st.builtin ? " · sample" : st.created ? " · " + new Date(st.created).toLocaleDateString(undefined, { month:"short", day:"numeric" }) : ""}</small></span><span class="muted">›</span></button>`).join("");
+}
+$("#storyList").onclick = e => { const b = e.target.closest("button[data-id]"); if (b) openStory(b.dataset.id); };
+function openStory(id){
+  const st = allStories().find(s => s.id === id); if (!st) return;
+  const sents = storySents(st);
+  $("#storyHome").hidden = true; const box = $("#storyRead"); box.hidden = false;
+  box.innerHTML = `
+    <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="sBack">‹ Stories</button>
+      <span class="row"><button class="btn small" id="sEn" aria-pressed="false">Show English</button>${speakBtn(sents.map(s => s.text).join(" "), "Hear the story")}</span></div>
+    <article class="reader"><h2>${esc(st.title)}</h2><div class="muted" style="font-family:var(--f-ui);font-size:.9rem;margin-bottom:12px">${esc(st.titleEn||"")}</div><div id="sBody"></div></article>
+    <div class="legend"><span><i class="w unk" style="padding:0">dotted</i> new to you</span><span><i style="background:var(--accent-soft)">shaded</i> still learning</span><span>Tap any word</span></div>
+    ${st.builtin ? "" : `<button class="btn ghost small" id="sDel" style="align-self:flex-start;color:var(--bad)">Delete story</button>`}`;
+  let showEn = false;
+  const body = $("#sBody"); body.append(renderSentences(sents, false)); bindReader(body, sents);
+  $("#sBack").onclick = renderStoryHome;
+  $("#sEn").onclick = e => { showEn = !showEn; e.target.textContent = showEn ? "Hide English" : "Show English"; body.querySelectorAll(".en").forEach(x => x.hidden = !showEn); };
+  const del = $("#sDel");
+  if (del) del.onclick = () => {
+    if (del.dataset.armed) { S.stories = S.stories.filter(s => s.id !== id); save(); renderStoryHome(); toast("Story deleted"); }
+    else { del.dataset.armed = 1; del.textContent = "Tap again to delete"; }
+  };
+  window.scrollTo(0, 0);
+}
+$("#genBtn").onclick = async () => {
+  if (!AI) return;
+  const topic = $("#topic").value.trim() || "something from everyday life";
+  const btn = $("#genBtn"), status = $("#genStatus");
+  btn.disabled = true; genCtl = new AbortController();
+  status.innerHTML = `<div class="progress"><span class="spin"></span><span id="gp">Thinking…</span><button class="btn small ghost" id="gStop">Stop</button></div>`;
+  $("#gStop").onclick = () => genCtl.abort();
+  const prompt = `You write short graded readers for an adult learning Spanish. ${LATAM}
+
+Words the learner knows (any conjugation, plural or gender form of these is fine):
+${knownList(700)}
+
+Words the learner is practicing right now (use several of them):
+${learningList() || "(none)"}
+
+Write a story of about ${storyLen} sentences about: ${topic}.
+Rules: at least 90% of content words must come from the known list. You may use names, articles, prepositions and pronouns freely. Introduce at most 4 new content words, and make their meaning guessable from context. Keep sentences short. Mostly present tense unless the known list suggests the learner knows past tenses. Give it a small turn or a gentle bit of humor so it's worth reading.
+
+Reply with only JSON: {"title": Spanish title, "titleEn": English title, "sentences": [...]}
+${TOKEN_SPEC}`;
+  try {
+    const data = await AI.json(prompt, { signal: genCtl.signal, cache: false, onText: ({ text }) => { const p = $("#gp"); if (p) p.textContent = `Writing… ${text.length.toLocaleString()} characters`; } });
+    const sentences = validSentences(data?.sentences);
+    if (!sentences.length) throw { code: "invalid_json" };
+    const st = { id: "s" + Date.now(), title: String(data.title || "Cuento"), titleEn: String(data.titleEn || topic), sentences, created: Date.now(), topic };
+    S.stories.push(st); if (S.stories.length > 60) S.stories.shift(); saveNow();
+    status.innerHTML = ""; openStory(st.id);
+  } catch (e) {
+    status.innerHTML = e?.code === "cancelled" ? "" : `<p class="err">${esc(errCopy(e))}</p>`;
+  }
+  btn.disabled = false;
+};
+
+/* ---------- ADVENTURE ---------- */
+const PREMISES = [
+  ["Perdido en Oaxaca", "You get off the bus in Oaxaca and your phone dies. You need to find your hotel."],
+  ["La cena de la abuela", "Your friend's grandmother in Medellín asks you to help cook dinner for twelve people."],
+  ["El gato del vecino", "The neighbor's cat has gone missing in a Buenos Aires apartment building, and everyone is a suspect."],
+  ["Primer día de trabajo", "It's your first day at a small café in Mexico City and the owner just left you in charge."]
+];
+let advPick = 0, advCtl = null;
+function renderAdv(){
+  const box = $("#advBody");
+  if (!S.adv) {
+    box.innerHTML = `
+      <p style="margin:0">A story that writes itself as you go, built from your words. Every few sentences you pick what happens next. Tap any word for its meaning.</p>
+      <div class="eyebrow">Pick a starting point</div>
+      <div class="stack" id="premises">${PREMISES.map((p, i) => `<button class="choice" data-i="${i}" aria-pressed="${i === advPick}" style="${i === advPick ? "background:var(--accent-soft)" : "border-color:var(--line)"}">${esc(p[0])}<small>${esc(p[1])}</small></button>`).join("")}</div>
+      <label class="field">Or describe your own<input type="text" id="advCustom" placeholder="a road trip through Chile with a talking parrot"></label>
+      ${AI ? `<button class="btn primary" id="advStart">Begin</button>` : `<p class="muted" style="margin:0">Adventures are written by Claude, which is available when you open this page in the Claude app or on claude.ai while signed in.</p>`}
+      <div id="advStatus"></div>`;
+    $("#premises").onclick = e => { const b = e.target.closest("[data-i]"); if (b) { advPick = +b.dataset.i; renderAdv(); } };
+    const st = $("#advStart");
+    if (st) st.onclick = () => {
+      const custom = $("#advCustom").value.trim();
+      const premise = custom || PREMISES[advPick][1];
+      S.adv = { premise, steps: [], started: Date.now() }; save();
+      advStep(null);
+    };
+    return;
+  }
+  const a = S.adv;
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><span class="muted" style="font-size:.88rem">${esc(a.title || "")}</span><span class="row"><button class="btn small" id="aEn">Show English</button><button class="btn small ghost" id="aNew">New adventure</button></span></div><article class="reader" id="aBody"></article><div id="advStatus"></div>`;
+  const body = $("#aBody");
+  if (a.title) body.insertAdjacentHTML("beforeend", `<h2>${esc(a.title)}</h2><div style="height:8px"></div>`);
+  a.steps.forEach((s, idx) => {
+    const part = document.createElement("div"); part.append(renderSentences(s.sentences, a.showEn)); bindReader(part, s.sentences); body.append(part);
+    if (s.chose != null) body.insertAdjacentHTML("beforeend", `<div class="chosen">→ ${esc(s.choices[s.chose]?.es || "")}</div>`);
+    else if (s.end) body.insertAdjacentHTML("beforeend", `<p class="muted" style="font-family:var(--f-ui)">— Fin —</p>`);
+    else if (idx === a.steps.length - 1) {
+      const ch = document.createElement("div"); ch.className = "choices";
+      ch.innerHTML = s.choices.map((c, ci) => `<button class="choice" data-c="${ci}">${esc(c.es)}<small ${a.showEn ? "" : "hidden"}>${esc(c.en)}</small></button>`).join("");
+      ch.onclick = e => { const b = e.target.closest("[data-c]"); if (!b || !AI) return; s.chose = +b.dataset.c; save(); advStep(s.choices[s.chose]); };
+      body.append(ch);
+    }
+  });
+  const last = a.steps[a.steps.length-1];
+  if (last && last.chose != null && !advCtl) $("#advStatus").innerHTML = AI ? `<button class="btn primary" id="aRetry">Continue</button>` : "";
+  $("#aRetry")?.addEventListener("click", () => advStep(last.choices[last.chose]));
+  $("#aEn").textContent = a.showEn ? "Hide English" : "Show English";
+  $("#aEn").onclick = () => { a.showEn = !a.showEn; save(); renderAdv(); };
+  const nb = $("#aNew");
+  nb.onclick = () => { if (nb.dataset.armed) { advCtl?.abort(); S.adv = null; save(); renderAdv(); } else { nb.dataset.armed = 1; nb.textContent = "Tap again to end"; } };
+}
+async function advStep(choice){
+  const a = S.adv; if (!a || !AI) return;
+  renderAdv();
+  const status = $("#advStatus");
+  advCtl = new AbortController();
+  status.innerHTML = `<div class="progress"><span class="spin"></span><span id="ap">Thinking…</span><button class="btn small ghost" id="aStop">Stop</button></div>`;
+  $("#aStop").onclick = () => advCtl.abort();
+  const n = a.steps.length;
+  const history = a.steps.slice(-6).map(s => s.sentences.map(x => x.text).join(" ") + (s.chose != null ? `\n[Reader chose: ${s.choices[s.chose].es}]` : "")).join("\n\n");
+  const prompt = `You run a choose-your-own-adventure story for an adult learning Spanish. ${LATAM}
+The reader is "tú" (second person).
+
+Premise: ${a.premise}
+
+Words the learner knows (any form of these is fine):
+${knownList(600)}
+Words they are practicing now (work some in): ${learningList() || "(none)"}
+
+${n ? `Story so far (most recent last):\n${history}\n\nThis is part ${n+1}.` : "This is part 1. Open the story."}
+Write the next 3 to 5 short sentences, mostly with known words (at most 2 new content words per part, guessable from context). Present tense. ${n >= 7 ? "Bring the story to a satisfying ending in this part: set \"end\": true and give no choices." : n >= 5 ? "Start steering toward an ending within the next two parts." : ""}
+Then offer 3 short choices for what the reader does next, each a short Spanish sentence starting with a verb in yo form (e.g. "Pregunto a la señora."), with an English translation. Make the choices genuinely different.
+
+Reply with only JSON: {${n ? "" : "\"title\": short Spanish title, "}"sentences": [...], "choices": [{"es": ..., "en": ...}], "end": false}
+${TOKEN_SPEC}`;
+  try {
+    const data = await AI.json(prompt, { signal: advCtl.signal, cache: false, onText: ({ text }) => { const p = $("#ap"); if (p) p.textContent = `Writing… ${text.length.toLocaleString()} characters`; } });
+    const sentences = validSentences(data?.sentences);
+    if (!sentences.length) throw { code: "invalid_json" };
+    const choices = (Array.isArray(data.choices) ? data.choices : []).filter(c => c && c.es).slice(0, 4).map(c => ({ es: String(c.es), en: String(c.en || "") }));
+    if (!S.adv) return;
+    if (!n && data.title) S.adv.title = String(data.title);
+    S.adv.steps.push({ sentences, choices, end: !!data.end || !choices.length, chose: null });
+    advCtl = null; save(); renderAdv();
+    const parts = document.querySelectorAll("#aBody > div"); parts[parts.length-1]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    advCtl = null;
+    if (!S.adv) return;
+    if (!S.adv.steps.length && e?.code === "cancelled") { S.adv = null; save(); renderAdv(); return; }
+    renderAdv();
+    if (e?.code !== "cancelled") $("#advStatus").insertAdjacentHTML("afterbegin", `<p class="err">${esc(errCopy(e))}</p>`);
+    if (!S.adv.steps.length) $("#advStatus").insertAdjacentHTML("beforeend", `<button class="btn primary" id="aRetry0">Try again</button>`), $("#aRetry0").onclick = () => advStep(null);
+  }
+}
+
+/* ---------- WORDS ---------- */
+function statusPill(k){
+  const c = S.cards[k+"|r"]; if (!c || c.state === "new") return `<span class="pill">new</span>`;
+  if (c.state !== "review") return `<span class="pill lrn">learning</span>`;
+  return `<span class="pill rev">${fmtGap(c.ivl*DAY)}</span>`;
+}
+let openedImport = false;
+function renderWords(){
+  const q = $("#wSearch").value.trim().toLowerCase();
+  const all = Object.values(S.words).sort((a,b) => keyOf(a.es).localeCompare(keyOf(b.es), "es"));
+  const list = q ? all.filter(w => w.es.toLowerCase().includes(q) || w.en.toLowerCase().includes(q)) : all;
+  const starter = all.filter(w => w.source === "starter").length;
+  $("#wordCount").textContent = `${all.length} words`;
+  $("#wordList").innerHTML = list.slice(0, 300).map(w => `<button data-k="${esc(w.id)}"><span class="es">${wordFace(w)}</span>${statusPill(w.id)}<span class="en">${esc(w.en || "no meaning yet")}</span></button>`).join("") || `<p class="muted" style="padding:14px;margin:0">No matches.</p>`;
+  $("#wMore").textContent = (list.length > 300 ? `Showing 300 of ${list.length}. Search to narrow it down. ` : "") + (starter ? `${starter} of these are sample starter words. Import your Duolingo list to replace them.` : "");
+  if (starter && !openedImport) { $("#importBox").open = true; openedImport = true; }
+}
+$("#wSearch").oninput = renderWords;
+$("#wordList").onclick = e => { const b = e.target.closest("[data-k]"); if (b) editWord(b.dataset.k); };
+$("#addWordBtn").onclick = () => editWord(null);
+function editWord(k){
+  const w = k ? S.words[k] : { es:"", en:"", pos:"", g:"", note:"" };
+  const c = k && S.cards[k+"|r"];
+  openSheet(`
+    <h2>${k ? "Edit word" : "Add a word"}</h2>
+    <label class="field">Spanish (include el / la for nouns)<input type="text" id="eEs" value="${esc(w.es)}"></label>
+    <label class="field">Meaning<input type="text" id="eEn" value="${esc(w.en)}"></label>
+    <label class="field">Your connection<textarea id="eNote" placeholder="A memory, image, or person this word brings to mind">${esc(w.note)}</textarea></label>
+    ${c && c.state !== "new" ? `<p class="muted" style="margin:0;font-size:.9rem">Reviewed ${c.reps} time${c.reps === 1 ? "" : "s"}${c.lapses ? `, forgotten ${c.lapses}` : ""}. Next review in ${fmtGap(Math.max(0, c.due - Date.now()))}.</p>` : ""}
+    <div class="row"><button class="btn primary" id="eSave">Save</button>${k ? `<button class="btn ghost" id="eDel" style="color:var(--bad)">Delete</button>` : ""}</div>`, root => {
+      root.querySelector("#eSave").onclick = () => {
+        const es = root.querySelector("#eEs").value.trim(), en = root.querySelector("#eEn").value.trim(), note = root.querySelector("#eNote").value;
+        if (!es) { toast("Enter the Spanish word"); return; }
+        const g = /^(el|un)\s/i.test(es) ? "m" : /^(la|una)\s/i.test(es) ? "f" : "";
+        if (k && keyOf(es) === k) Object.assign(S.words[k], { es, en, note, g: g || S.words[k].g });
+        else { if (k) removeWord(k); const nk = addWord(es, en, g ? "noun" : "", g, "manual"); if (nk) S.words[nk].note = note; else if (!k) { toast("You already have that word"); return; } }
+        save(); closeSheet(); renderWords(); toast("Saved");
+      };
+      const del = root.querySelector("#eDel");
+      if (del) del.onclick = () => { if (del.dataset.armed) { removeWord(k); save(); closeSheet(); renderWords(); toast("Deleted"); } else { del.dataset.armed = 1; del.textContent = "Tap again to delete"; } };
+  });
+}
+
+/* import */
+function localParse(text){
+  const out = [];
+  text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(l => {
+    let m = l.split(/\t|\s[–—-]\s|\s*=\s*|:\s+/);
+    if (m.length < 2 && /,/.test(l) && /^[^,]+,\s*"?[a-z]/i.test(l) && l.split(",").length === 2) m = l.split(",");
+    const es = (m[0]||"").replace(/^["']|["']$/g, "").trim(), en = m.slice(1).join(", ").replace(/^["']|["']$/g, "").trim();
+    if (es && es.length < 40) out.push({ es, en });
+  });
+  return out;
+}
+$("#importBtn").onclick = async () => {
+  const text = $("#importText").value.trim(), status = $("#importStatus"), btn = $("#importBtn");
+  if (!text) { status.innerHTML = `<p class="err">Paste your word list first.</p>`; return; }
+  btn.disabled = true;
+  let items = [];
+  if (AI) {
+    const chunks = []; const lines = text.split(/\r?\n/); let buf = "";
+    for (const l of lines) { if ((buf + l).length > 5000) { chunks.push(buf); buf = ""; } buf += l + "\n"; }
+    if (buf.trim()) chunks.push(buf);
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        status.innerHTML = `<div class="progress"><span class="spin"></span>Sorting words${chunks.length > 1 ? ` (part ${i+1} of ${chunks.length})` : ""}…</div>`;
+        const res = await AI.json(`This is text a learner copied from their Duolingo Spanish word list. It may be messy: page chrome, headings, words on one line and translations on the next, or comma lists. Extract every Spanish vocabulary item.
+For each item return {"es": the Spanish word, with "el " or "la " in front if it's a noun (use the correct gender; "el agua" style exceptions keep el), "en": short English meaning (use the given translation if present, otherwise supply the most common one), "pos": noun|verb|adjective|adverb|phrase|other, "g": "m" or "f" for nouns, else ""}.
+Skip UI text, numbers, and English-only lines. Keep multi-word phrases as one item. Reply with only a JSON array.
+
+Text:
+${chunks[i]}`, { modelTier: "quick", cache: false });
+        if (Array.isArray(res)) items.push(...res);
+      }
+    } catch (e) {
+      status.innerHTML = `<p class="err">${esc(errCopy(e))} Importing with the simple reader instead.</p>`;
+      items = localParse(text);
+    }
+  } else items = localParse(text);
+  if (!items.length) { status.innerHTML = `<p class="err">I couldn't find any words in that text.</p>`; btn.disabled = false; return; }
+  if ($("#dropStarter").checked) Object.values(S.words).filter(w => w.source === "starter" && S.cards[w.id+"|r"]?.state === "new").forEach(w => removeWord(w.id));
+  let added = 0;
+  items.forEach(it => { if (it && it.es && addWord(String(it.es), String(it.en||""), String(it.pos||""), it.g === "m" || it.g === "f" ? it.g : "", "import")) added++; });
+  save();
+  status.innerHTML = `<p style="margin:0"><b>${added} words added.</b> <span class="muted">${items.length - added ? (items.length - added) + " were already in your list." : ""}</span></p>`;
+  $("#importText").value = ""; btn.disabled = false; renderWords();
+};
+
+/* backup */
+$("#copyBackup").onclick = async () => {
+  const data = JSON.stringify({ app: "palabraviva", v: 1, at: new Date().toISOString(), S });
+  try { await navigator.clipboard.writeText(data); toast("Backup copied"); }
+  catch (e) { const t = $("#restoreText"); t.value = data; t.select(); toast("Select-all and copy the text below"); }
+};
+$("#restoreBtn").onclick = () => {
+  try {
+    const d = JSON.parse($("#restoreText").value);
+    if (!d || d.app !== "palabraviva" || !d.S || !d.S.words) throw 0;
+    S = Object.assign(fresh(), d.S); saveNow(); $("#restoreText").value = ""; renderWords(); toast(`Restored ${Object.keys(S.words).length} words`);
+  } catch (e) { toast("That doesn't look like a Palabra Viva backup"); }
+};
+
+/* ---------- boot ---------- */
+let startTab = "review";
+try { startTab = localStorage.getItem(LS+":tab") || "review"; } catch (e) {}
+if (!views[startTab]) startTab = "review";
+show(startTab);
+</script>
+
+</body>
+</html>
