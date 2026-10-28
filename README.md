@@ -33,8 +33,8 @@ home-screen web apps that keep their own cookies.
 | Variable | Meaning |
 |---|---|
 | `ANTHROPIC_API_KEY` | Enables stories, adventures, "Explain this form" and the smart import. Without it those features hide themselves. |
-| `PV_PUBLIC` | Public URL of the app, used in printed login links (`https://thelackthereof.org/spanish`). |
-| `PV_BASE` | Path prefix behind the proxy, used as the cookie path (`/spanish`). |
+| `PV_PUBLIC` | Public URL of the app, used in printed login links (`https://thelackthereof.org/palabras`). |
+| `PV_BASE` | Path prefix behind the proxy, used as the cookie path (`/palabras`). |
 | `PV_DB` | sqlite file (`/data/palabra.db` in the container). |
 | `PV_AI_DAILY` | Claude calls per learner per day (default 200). |
 | `ELEVENLABS_API_KEY` | Enables ElevenLabs voices; without it the device's speech voice is used. |
