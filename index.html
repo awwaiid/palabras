@@ -84,6 +84,7 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 .grades .g0{color:var(--bad)} .grades .g1{color:var(--hard)} .grades .g2{color:var(--good)} .grades .g3{color:var(--accent)}
 .iconbtn{border:1px solid var(--line);background:var(--card);border-radius:999px;width:40px;height:40px;display:inline-grid;place-items:center;padding:0}
 .iconbtn svg{width:20px;height:20px}
+.iconbtn[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .note{width:100%;text-align:left}
 .note textarea{min-height:64px;font-size:.92rem}
 
@@ -175,6 +176,7 @@ details summary{cursor:pointer;font-weight:700}
   <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></symbol>
   <symbol id="i-turtle" viewBox="0.8 5.2 22.4 14.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 15.5c0-4.2 3.1-7.5 7.5-7.5s7.5 3.3 7.5 7.5z"/><path d="M6.8 15.5c.5-2.4 2-3.8 3.7-3.8s3.2 1.4 3.7 3.8"/><path d="M18 14.5c.4-1.6 1.3-2.5 2.6-2.5a1.4 1.4 0 0 1 0 2.8H18"/><path d="M6 15.5v2.5M15 15.5v2.5"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9l5 6M21 9l-5 6"/></symbol>
   <symbol id="i-speak" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
 </svg>
 
@@ -868,7 +870,6 @@ function reveal(w, rec){
     ? `<div class="mid">${esc(w.en || "—")}</div><div class="muted">${esc(posLine(w))}</div>`
     : `<div class="big">${wordFace(w)}</div>${speakBtn(w.es)}`) +
     `<label class="note field">Your connection<textarea id="noteBox" placeholder="A memory, image, or person this word brings to mind">${esc(w.note)}</textarea></label>`;
-  if (!rec) speak(w.es);
   $("#noteBox").oninput = e => { w.note = e.target.value; save(); };
   const btns = ["Again","Hard","Good","Easy"].map((l, g) => `<button class="g${g}" data-g="${g}">${l}<small>${fmtGap(sched(cur, g).due - Date.now())}</small></button>`).join("");
   $("#showBtn").outerHTML = `<div class="grades" id="grades">${btns}</div>`;
@@ -896,14 +897,15 @@ function startMatch(){
   const R = pick.map(w => ({ id: w.id, t: w.en.split(/[,;]/)[0] })).sort(() => Math.random()-0.5);
   $("#revHome").hidden = true; $("#matchView").hidden = false;
   const box = $("#matchView");
-  box.innerHTML = `<div class="row" style="justify-content:space-between"><button class="btn ghost small" id="mBack">Back</button><span class="muted" style="font-size:.85rem" id="mInfo">Tap a Spanish word, then its meaning</span></div><div class="match" id="mGrid"></div>`;
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><button class="btn ghost small" id="mBack">Back</button><span class="row" style="gap:10px"><span class="muted" style="font-size:.85rem" id="mInfo">Tap a Spanish word, then its meaning</span><button class="iconbtn" id="mMute" aria-pressed="${!!S.settings.matchMute}" aria-label="Voice in this game"><svg><use href="#${S.settings.matchMute ? "i-mute" : "i-speak"}"/></svg></button></span></div><div class="match" id="mGrid"></div>`;
+  $("#mMute").onclick = () => { S.settings.matchMute = !S.settings.matchMute; save(); $("#mMute").setAttribute("aria-pressed", !!S.settings.matchMute); $("#mMute").querySelector("use").setAttribute("href", S.settings.matchMute ? "#i-mute" : "#i-speak"); if (S.settings.matchMute) stopSpeech(); };
   const grid = $("#mGrid");
   for (let i = 0; i < L.length; i++) grid.insertAdjacentHTML("beforeend",
     `<button class="es" data-side="L" data-id="${esc(L[i].id)}">${esc(L[i].t)}</button><button data-side="R" data-id="${esc(R[i].id)}">${esc(R[i].t)}</button>`);
   let sel = null, left = L.length, misses = 0;
   grid.onclick = e => {
     const b = e.target.closest("button"); if (!b || b.classList.contains("ok")) return;
-    if (!sel || sel.dataset.side === b.dataset.side) { sel?.classList.remove("on"); sel = b; b.classList.add("on"); if (b.dataset.side === "L") speak(b.textContent); return; }
+    if (!sel || sel.dataset.side === b.dataset.side) { sel?.classList.remove("on"); sel = b; b.classList.add("on"); if (b.dataset.side === "L" && !S.settings.matchMute) speak(b.textContent); return; }
     if (sel.dataset.id === b.dataset.id) { sel.classList.remove("on"); sel.classList.add("ok"); b.classList.add("ok"); sel = null; left--;
       if (!left) $("#mInfo").textContent = misses ? `Done · ${misses} miss${misses === 1 ? "" : "es"}` : "Done · no misses", grid.insertAdjacentHTML("afterend", `<button class="btn primary block" id="mAgain">Another round</button>`), $("#mAgain").onclick = startMatch;
     } else { misses++; const a = sel; a.classList.add("no"); b.classList.add("no"); setTimeout(() => { a.classList.remove("no","on"); b.classList.remove("no"); }, 500); sel = null; }
