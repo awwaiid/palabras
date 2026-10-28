@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" translate="no">
+<html lang="en" translate="no">
 <head>
 <meta charset="utf-8">
 <meta name="google" content="notranslate">
@@ -291,12 +291,17 @@ details summary{cursor:pointer;font-weight:700}
           <div id="importStatus"></div>
         </div>
       </details>
-      <div class="row">
-        <input type="search" id="wSearch" placeholder="Search Spanish or English" style="flex:1;min-width:0">
-        <button class="btn" id="addWordBtn">Add</button>
-      </div>
-      <div class="wlist" id="wordList"></div>
-      <p class="muted" id="wMore" style="margin:0;font-size:.88rem"></p>
+      <details class="panel" id="wordsBox">
+        <summary>Your words</summary>
+        <div class="stack" style="margin-top:12px">
+          <div class="row">
+            <input type="search" id="wSearch" placeholder="Search Spanish or English" style="flex:1;min-width:0">
+            <button class="btn" id="addWordBtn">Add</button>
+          </div>
+          <div class="wlist" id="wordList"></div>
+          <p class="muted" id="wMore" style="margin:0;font-size:.88rem"></p>
+        </div>
+      </details>
       <details class="panel" id="voiceBox">
         <summary>Voice</summary>
         <div class="stack" style="margin-top:12px">
