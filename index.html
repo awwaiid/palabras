@@ -286,7 +286,12 @@ details summary{cursor:pointer;font-weight:700}
       <details class="panel" id="importBox">
         <summary>Import your Duolingo words</summary>
         <div class="stack" style="margin-top:12px">
-          <p class="muted" style="margin:0;font-size:.92rem">Open Duolingo's word list (Practice Hub → Words on the website), select all, copy, and paste here. Any format works: one word per line, “palabra – meaning”, CSV, or the raw copied page.</p>
+          <ol class="muted" style="margin:0;padding-left:20px;font-size:.92rem;line-height:1.5">
+            <li>On a computer, drag this to your bookmarks bar: <a class="btn small" id="duoBookmarklet" href="#" draggable="true">Copy my Duolingo words</a></li>
+            <li>Open <a href="https://www.duolingo.com/practice-hub/words" target="_blank" rel="noopener">duolingo.com/practice-hub/words</a> (signed in, Spanish course).</li>
+            <li>Click the bookmark there. It copies your whole list; paste it below and press Import.</li>
+          </ol>
+          <p class="muted" style="margin:0;font-size:.86rem" id="duoHint">No bookmarks bar? Select all on that page, copy, and paste here instead. Any format works.</p>
           <textarea id="importText" placeholder="hola – hello&#10;el perro – dog&#10;comer&#10;…"></textarea>
           <label class="switch"><span>Remove the sample starter words</span><input type="checkbox" id="dropStarter" checked></label>
           <button class="btn primary" id="importBtn">Import</button>
@@ -1149,6 +1154,46 @@ function editWord(k){
 }
 
 /* import */
+// Runs on duolingo.com as a bookmarklet, so it must be self-contained: nothing from this page is reachable there.
+async function duoCopyWords(){
+  if (location.hostname !== "www.duolingo.com") { alert("Open duolingo.com/practice-hub/words first, then click this bookmark again."); return; }
+  const token = document.cookie.split("; ").find(c => c.startsWith("jwt_token="))?.slice(10);
+  if (!token) { alert("Sign in to Duolingo first, then click this bookmark again."); return; }
+  const headers = { Authorization: "Bearer " + token, "Content-Type": "application/json" };
+  try {
+    const userId = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sub;
+    const u = await fetch("/2017-06-30/users/" + userId + "?fields=currentCourse", { headers });
+    if (!u.ok) throw new Error("Duolingo answered " + u.status + ".");
+    const course = (await u.json()).currentCourse;
+    if (!course || !course.learningLanguage) throw new Error("Duolingo didn't send your course. Check you're signed in.");
+    if (course.learningLanguage !== "es") { alert("Switch Duolingo to the Spanish course, then click this bookmark again."); return; }
+    const progressedSkills = [], seen = new Set();
+    for (const s of course.pathSectioned || []) for (const un of s.units || []) for (const l of un.levels || []) {
+      const id = l.pathLevelMetadata && l.pathLevelMetadata.skillId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      if (l.state !== "locked") progressedSkills.push({ skillId: { id }, finishedLevels: l.state === "passed" || l.state === "legendary" ? 1 : 0, finishedSessions: l.finishedSessions || 0 });
+    }
+    const lines = [];
+    for (let start = 0, pages = 0; start !== null && pages < 100; pages++) {
+      const r = await fetch("/2017-06-30/users/" + userId + "/courses/" + course.learningLanguage + "/" + course.fromLanguage + "/learned-lexemes?limit=500&sortBy=LEARNED_DATE&startIndex=" + start,
+        { method: "POST", headers, body: JSON.stringify({ lastTotalLexemeCount: 0, progressedSkills }) });
+      if (!r.ok) throw new Error("Duolingo answered " + r.status + ".");
+      const body = await r.json();
+      for (const w of body.learnedLexemes || []) if (w.text) lines.push(w.text + "\t" + (w.translations || []).join(", "));
+      const next = body.pagination && body.pagination.nextStartIndex;
+      start = typeof next === "number" ? next : null;
+    }
+    if (!lines.length) throw new Error("Duolingo didn't send any words.");
+    const text = lines.join("\n");
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { window.prompt("Couldn't reach the clipboard. Copy this (Ctrl/Cmd+A, Ctrl/Cmd+C):", text); return; }
+    alert(lines.length + " words copied. Open Palabras, then Import your Duolingo words, and paste.");
+  } catch (e) { alert((e && e.message) || String(e)); }
+}
+$("#duoBookmarklet").href = "javascript:" + encodeURIComponent("void((" + duoCopyWords.toString() + ")())");
+$("#duoBookmarklet").onclick = e => { e.preventDefault(); $("#duoHint").textContent = "This button only works as a bookmark. Drag it to your bookmarks bar, then click it on your Duolingo words page."; };
+if (matchMedia("(hover: none)").matches) $("#duoHint").textContent = "The bookmark step needs a computer. On a phone, select all on that page, copy, and paste here instead.";
 function localParse(text){
   const out = [];
   text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(l => {
