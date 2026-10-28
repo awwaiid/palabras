@@ -86,7 +86,15 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 /* reader */
 .reader{font-family:var(--f-read);font-size:1.22rem;line-height:1.85}
 .reader h2{font-size:1.6rem;margin-bottom:2px}
-.reader p.s{margin:0 0 .35em}
+.reader p.s{margin:0 0 .35em;border-radius:6px}
+.reader p.s.playing{outline:2px solid var(--accent);outline-offset:4px}
+.vlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.vrow{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;border-bottom:1px solid var(--line)}
+.vrow:last-child{border-bottom:0}
+.vrow .pick{flex:1;min-width:0;text-align:left;background:none;border:0;padding:2px 0;display:flex;flex-direction:column}
+.vrow .pick small{color:var(--muted);font-size:.82rem}
+.vrow[aria-current="true"]{background:var(--accent-soft)}
+.vrow[aria-current="true"] .pick b::after{content:" ✓";color:var(--accent)}
 .reader .en{display:block;font-family:var(--f-ui);font-size:.9rem;line-height:1.4;color:var(--muted);margin:0 0 .9em}
 .w{background:none;border:0;padding:0 1px;margin:0 -1px;font:inherit;color:inherit;border-radius:4px;cursor:pointer}
 .w.unk{text-decoration:underline dotted var(--accent) 2px;text-underline-offset:4px}
@@ -244,6 +252,15 @@ details summary{cursor:pointer;font-weight:700}
       </div>
       <div class="wlist" id="wordList"></div>
       <p class="muted" id="wMore" style="margin:0;font-size:.88rem"></p>
+      <details class="panel" id="voiceBox">
+        <summary>Voice</summary>
+        <div class="stack" style="margin-top:12px">
+          <p class="muted" style="margin:0;font-size:.92rem">Who reads Spanish to you. Tap ▶ to hear a sample.</p>
+          <div class="vlist" id="voiceList"></div>
+          <div class="row"><span class="muted" style="font-size:.88rem;font-weight:700">Speed</span>
+            <div class="chips" id="speedChips"><button class="chip" data-s="1">Normal</button><button class="chip" data-s="0.85">Slower</button><button class="chip" data-s="0.7">Slowest</button></div></div>
+        </div>
+      </details>
       <details class="panel">
         <summary>Backup</summary>
         <div class="stack" style="margin-top:12px">
@@ -531,10 +548,32 @@ function pickVoice(){
     esVoice = vs.find(v => /es[-_](MX|US|419|CO|AR)/i.test(v.lang)) || vs[0] || null; } catch (e) {}
 }
 try { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {}
-function speak(text){
-  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = esVoice?.lang || "es-MX"; if (esVoice) u.voice = esVoice; u.rate = 0.9; speechSynthesis.speak(u); }
-  catch (e) { toast("Speech isn't available in this browser"); }
+/* ElevenLabs through the server when a voice is chosen and available; this device's voice otherwise.
+   The server keeps each clip and marks it immutable, so replays come from the browser cache. */
+let TTS = false, voiceList = [], ttsDownUntil = 0, stopCur = null;
+const player = new Audio();
+const ttsVoice = () => S?.settings?.voice || voiceList[0]?.id || "device";
+const ttsSpeed = () => String(S?.settings?.speed ?? 1);
+const useTTS = () => TTS && ttsVoice() !== "device" && Date.now() > ttsDownUntil;
+function stopSpeech(){ stopCur?.(false); stopCur = null; player.pause(); try { speechSynthesis.cancel(); } catch (e) {} }
+function deviceSpeak(text, done){
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = esVoice?.lang || "es-MX"; if (esVoice) u.voice = esVoice; u.rate = 0.9 * +ttsSpeed(); u.onend = u.onerror = () => done(true); speechSynthesis.speak(u); }
+  catch (e) { toast("Speech isn't available in this browser"); done(false); }
 }
+/* resolves true when the text finished playing, false when something else interrupted it */
+function speak(text){
+  stopSpeech();
+  return new Promise(resolve => {
+    let over = false; const finish = ok => { if (!over) { over = true; if (stopCur === finish) stopCur = null; resolve(ok); } };
+    stopCur = finish;
+    if (!useTTS()) return deviceSpeak(text, finish);
+    const fallback = () => { if (over) return; ttsDownUntil = Date.now() + 5*MIN; deviceSpeak(text, finish); };
+    player.onended = () => finish(true); player.onerror = fallback;
+    player.src = "api/tts?" + new URLSearchParams({ t: text, v: ttsVoice(), s: ttsSpeed() });
+    player.play().catch(fallback);
+  });
+}
+function previewVoice(url){ stopSpeech(); player.onended = player.onerror = null; player.src = url; player.play().catch(() => {}); }
 const speakBtn = (t, label) => `<button class="iconbtn" data-speak="${esc(t)}" aria-label="${esc(label||"Hear it")}"><svg><use href="#i-speak"/></svg></button>`;
 document.addEventListener("click", e => { const b = e.target.closest("[data-speak]"); if (b) { e.stopPropagation(); speak(b.dataset.speak); } });
 
@@ -693,7 +732,7 @@ function bindReader(host, sents){
 const views = { review: "#v-review", stories: "#v-stories", adv: "#v-adv", words: "#v-words" };
 let curTab = "review";
 function show(v){
-  curTab = v; $("#v-login").hidden = true; $("#bootMsg").hidden = true; document.querySelector("nav.tabs").hidden = false;
+  stopSpeech(); curTab = v; $("#v-login").hidden = true; $("#bootMsg").hidden = true; document.querySelector("nav.tabs").hidden = false;
   Object.entries(views).forEach(([k, sel]) => $(sel).hidden = k !== v);
   document.querySelectorAll("nav.tabs button").forEach(b => { if (b.dataset.v === v) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
   if (v === "review") renderReviewHome();
@@ -834,13 +873,26 @@ function openStory(id){
   $("#storyHome").hidden = true; const box = $("#storyRead"); box.hidden = false;
   box.innerHTML = `
     <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="sBack">‹ Stories</button>
-      <span class="row"><button class="btn small" id="sEn" aria-pressed="false">Show English</button>${speakBtn(sents.map(s => s.text).join(" "), "Hear the story")}</span></div>
+      <span class="row"><button class="btn small" id="sEn" aria-pressed="false">Show English</button><button class="btn small" id="sPlay">Listen</button></span></div>
     <article class="reader"><h2>${esc(st.title)}</h2><div class="muted" style="font-family:var(--f-ui);font-size:.9rem;margin-bottom:12px">${esc(st.titleEn||"")}</div><div id="sBody"></div></article>
     <div class="legend"><span><i class="w unk" style="padding:0">dotted</i> new to you</span><span><i style="background:var(--accent-soft)">shaded</i> still learning</span><span>Tap any word</span></div>
     ${st.builtin ? "" : `<button class="btn ghost small" id="sDel" style="align-self:flex-start;color:var(--bad)">Delete story</button>`}`;
   let showEn = false;
   const body = $("#sBody"); body.append(renderSentences(sents, false)); bindReader(body, sents);
-  $("#sBack").onclick = renderStoryHome;
+  $("#sBack").onclick = () => { stopSpeech(); renderStoryHome(); };
+  $("#sPlay").onclick = async e => {
+    const btn = e.target;
+    if (btn.dataset.playing) { stopSpeech(); return; }
+    btn.dataset.playing = 1; btn.textContent = "Stop";
+    const ps = body.querySelectorAll("p.s");
+    for (let i = 0; i < ps.length; i++) {
+      ps.forEach(p => p.classList.toggle("playing", p === ps[i]));
+      ps[i].scrollIntoView({ block: "nearest", behavior: "smooth" });
+      if (!await speak(sents[i].text)) break;
+    }
+    ps.forEach(p => p.classList.remove("playing"));
+    delete btn.dataset.playing; btn.textContent = "Listen";
+  };
   $("#sEn").onclick = e => { showEn = !showEn; e.target.textContent = showEn ? "Hide English" : "Show English"; body.querySelectorAll(".en").forEach(x => x.hidden = !showEn); };
   const del = $("#sDel");
   if (del) del.onclick = () => {
@@ -993,8 +1045,26 @@ function renderWords(){
   $("#wordList").innerHTML = list.slice(0, 300).map(w => `<button data-k="${esc(w.id)}"><span class="es">${wordFace(w)}</span>${statusPill(w.id)}<span class="en">${esc(w.en || "no meaning yet")}</span></button>`).join("") || `<p class="muted" style="padding:14px;margin:0">No matches.</p>`;
   $("#wMore").textContent = (list.length > 300 ? `Showing 300 of ${list.length}. Search to narrow it down. ` : "") + (starter ? `${starter} of these are sample starter words. Import your Duolingo list to replace them.` : "");
   if (starter && !openedImport) { $("#importBox").open = true; openedImport = true; }
+  renderVoices();
 }
 $("#wSearch").oninput = renderWords;
+
+function renderVoices(){
+  const cur = TTS ? ttsVoice() : "device";
+  const row = (id, name, sub, preview) => `<div class="vrow" aria-current="${id === cur}"><button class="pick" data-voice="${esc(id)}"><b>${esc(name)}</b><small>${esc(sub)}</small></button>${preview ? `<button class="iconbtn" data-preview="${esc(preview)}" aria-label="Sample of ${esc(name)}">▶</button>` : ""}</div>`;
+  $("#voiceList").innerHTML = voiceList.map(v => {
+    const [name, desc] = v.name.split(/\s+-\s+/);
+    return row(v.id, name, [v.accent, v.gender, desc].filter(Boolean).join(" · "), v.preview);
+  }).join("") + row("device", "This device's voice", "Free and works offline", "");
+  document.querySelectorAll("#speedChips .chip").forEach(c => c.setAttribute("aria-pressed", c.dataset.s === ttsSpeed()));
+}
+$("#voiceList").onclick = e => {
+  const p = e.target.closest("[data-preview]"); if (p) { previewVoice(p.dataset.preview); return; }
+  const b = e.target.closest("[data-voice]"); if (!b) return;
+  S.settings.voice = b.dataset.voice; ttsDownUntil = 0; save(); renderVoices();
+  speak("Hola, ¿cómo estás? Vamos a practicar.");
+};
+$("#speedChips").onclick = e => { const c = e.target.closest(".chip"); if (!c) return; S.settings.speed = +c.dataset.s; save(); renderVoices(); speak("Hola, ¿cómo estás? Vamos a practicar."); };
 $("#wordList").onclick = e => { const b = e.target.closest("[data-k]"); if (b) editWord(b.dataset.k); };
 $("#addWordBtn").onclick = () => editWord(null);
 function editWord(k){
@@ -1122,6 +1192,8 @@ async function boot(){
   }
   $("#meName").textContent = me.name;
   initAI(me.ai);
+  TTS = !!me.tts;
+  if (TTS) api("voices").then(d => { voiceList = d.voices || []; if (curTab === "words") renderVoices(); }).catch(() => {});
   let startTab = "review";
   try { startTab = localStorage.getItem(LS+":tab") || "review"; } catch (e) {}
   if (!views[startTab]) startTab = "review";

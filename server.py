@@ -12,7 +12,8 @@ and proxies Claude so the browser never holds an API key.
 
 Environment: PV_DB (sqlite path), PV_PUBLIC (public URL of the app, for links),
 PV_BASE (path prefix behind the proxy, for the cookie), ANTHROPIC_API_KEY,
-PV_AI_DAILY (Claude calls per learner per day).
+PV_AI_DAILY (Claude calls per learner per day), ELEVENLABS_API_KEY,
+PV_TTS_WORD_MODEL / PV_TTS_LONG_MODEL (ElevenLabs models for single words / sentences).
 """
 import gzip
 import hashlib
@@ -21,7 +22,11 @@ import os
 import secrets
 import sqlite3
 import sys
+import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -58,6 +63,72 @@ def now_ms():
     return int(time.time() * 1000)
 
 
+# ---------- ElevenLabs text-to-speech ----------
+
+TTS_DIR = os.path.join(os.path.dirname(DB), "tts")
+TTS_WORD_MODEL = os.environ.get("PV_TTS_WORD_MODEL", "eleven_flash_v2_5")
+TTS_LONG_MODEL = os.environ.get("PV_TTS_LONG_MODEL", "eleven_multilingual_v2")
+TTS_WORD_MAX = 40          # up to this many characters counts as a word or short phrase
+TTS_ACCENTS = ("latin american", "mexican", "colombian")
+SPEEDS = {"1": 1.0, "0.85": 0.85, "0.7": 0.7}
+_voices = {"at": 0, "list": []}
+_voices_lock = threading.Lock()
+_blocked = {}               # voice id → time until which ElevenLabs is known to refuse it
+
+
+def eleven(path, body=None):
+    req = urllib.request.Request("https://api.elevenlabs.io" + path,
+                                 data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"xi-api-key": os.environ["ELEVENLABS_API_KEY"], "content-type": "application/json"})
+    return urllib.request.urlopen(req, timeout=60)
+
+
+def voices():
+    """Latin American Spanish voices: the account's own Spanish voices, then the most used library voices per accent. Cached a day."""
+    with _voices_lock:
+        if _voices["list"] and time.time() - _voices["at"] < 86400:
+            return _voices["list"]
+        out, seen = [], set()
+        try:
+            for v in json.load(eleven("/v2/voices?page_size=100")).get("voices", []):
+                lab = v.get("labels") or {}
+                if lab.get("language") == "es" and v["voice_id"] not in seen:
+                    seen.add(v["voice_id"])
+                    out.append({"id": v["voice_id"], "name": v["name"], "accent": lab.get("accent", ""), "gender": lab.get("gender", ""), "preview": v.get("preview_url") or ""})
+            for acc in TTS_ACCENTS:
+                q = urllib.parse.urlencode({"page_size": 6, "language": "es", "accent": acc, "sort": "usage_character_count_1y"})
+                for v in json.load(eleven("/v1/shared-voices?" + q)).get("voices", []):
+                    if v["voice_id"] not in seen:
+                        seen.add(v["voice_id"])
+                        out.append({"id": v["voice_id"], "name": v["name"], "accent": v.get("accent", ""), "gender": v.get("gender", ""), "preview": v.get("preview_url") or ""})
+        except (urllib.error.URLError, KeyError, ValueError) as e:
+            sys.stderr.write(f"voices: {e}\n")
+            return _voices["list"]
+        _voices.update(at=time.time(), list=out)
+        return out
+
+
+def tts(text, voice, speed):
+    """Return (mp3 bytes, characters billed). Each voice/model/speed/text is generated once and kept on disk."""
+    short = len(text) <= TTS_WORD_MAX
+    model = TTS_WORD_MODEL if short else TTS_LONG_MODEL
+    key = hashlib.sha256(f"{voice}|{model}|{speed}|{text}".encode()).hexdigest()
+    path = os.path.join(TTS_DIR, key[:2], key + ".mp3")
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return f.read(), 0
+    body = {"text": text, "model_id": model, "voice_settings": {"speed": speed}}
+    if model in ("eleven_flash_v2_5", "eleven_turbo_v2_5"):
+        body["language_code"] = "es"
+    with eleven(f"/v1/text-to-speech/{urllib.parse.quote(voice)}?output_format=mp3_44100_64", body) as r:
+        audio = r.read()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "wb") as f:
+        f.write(audio)
+    os.replace(path + ".tmp", path)
+    return audio, len(text)
+
+
 def db():
     con = sqlite3.connect(DB, timeout=10)
     con.execute("PRAGMA foreign_keys=ON")
@@ -75,6 +146,8 @@ def init_db():
     CREATE TABLE IF NOT EXISTS log (user_id INTEGER NOT NULL REFERENCES users(id), t INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (user_id, t));
     CREATE TABLE IF NOT EXISTS ai_usage (user_id INTEGER NOT NULL REFERENCES users(id), day TEXT NOT NULL, calls INTEGER NOT NULL DEFAULT 0, in_tok INTEGER NOT NULL DEFAULT 0, out_tok INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, day));
     """)
+    if "tts_chars" not in [r[1] for r in con.execute("PRAGMA table_info(ai_usage)")]:
+        con.execute("ALTER TABLE ai_usage ADD COLUMN tts_chars INTEGER NOT NULL DEFAULT 0")
     con.commit()
     con.close()
 
@@ -241,9 +314,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/me":
                 if not user:
                     return self.send_json({"error": "signed_out"}, 401)
-                return self.send_json({"name": user[1], "ai": bool(os.environ.get("ANTHROPIC_API_KEY"))})
+                return self.send_json({"name": user[1], "ai": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                                       "tts": bool(os.environ.get("ELEVENLABS_API_KEY"))})
             if not user:
                 return self.send_json({"error": "signed_out"}, 401)
+            if path == "/api/voices":
+                return self.send_json({"voices": voices() if os.environ.get("ELEVENLABS_API_KEY") else []})
+            if path == "/api/tts":
+                return self.speech(con, user)
             if path == "/api/state":
                 S, stamp, empty = load_state(con, user[0])
                 return self.send_json({"S": S, "stamp": stamp, "empty": empty})
@@ -292,6 +370,39 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "not_found"}, 404)
         finally:
             con.close()
+
+    def speech(self, con, user):
+        if not os.environ.get("ELEVENLABS_API_KEY"):
+            return self.send_json({"error": "tts_off"}, 503)
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        text = " ".join((q.get("t") or [""])[0].split())
+        voice = (q.get("v") or [""])[0]
+        speed = SPEEDS.get((q.get("s") or ["1"])[0], 1.0)
+        if not text or len(text) > 1500 or not voice.isalnum():
+            return self.send_json({"error": "bad_request"}, 400)
+        if _blocked.get(voice, 0) > time.time():
+            return self.send_json({"error": "upstream_error", "status": 402}, 502)
+        try:
+            audio, billed = tts(text, voice, speed)
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:300].decode(errors="replace")
+            self.log_message("elevenlabs %s: %s", e.code, detail)
+            if e.code in (401, 402):  # plan doesn't allow this voice, or quota used up: stop asking for a while
+                _blocked[voice] = time.time() + 600
+            return self.send_json({"error": "upstream_error", "status": e.code}, 502)
+        except (urllib.error.URLError, TimeoutError) as e:
+            self.log_message("elevenlabs: %s", e)
+            return self.send_json({"error": "upstream_error"}, 502)
+        if billed:
+            with con:
+                con.execute("INSERT INTO ai_usage (user_id, day) VALUES (?,?) ON CONFLICT DO NOTHING", (user[0], date.today().isoformat()))
+                con.execute("UPDATE ai_usage SET tts_chars = tts_chars + ? WHERE user_id = ? AND day = ?", (billed, user[0], date.today().isoformat()))
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Cache-Control", "private, max-age=31536000, immutable")
+        self.send_header("Content-Length", str(len(audio)))
+        self.end_headers()
+        self.wfile.write(audio)
 
     def ai(self, con, user, body):
         client = claude()
@@ -373,14 +484,15 @@ def cli(args):
             n = con.execute("DELETE FROM tokens WHERE user_id = ?", (user_by_name(con, args[1])[0],)).rowcount
         print(f"revoked {n} link(s)")
     elif cmd == "users":
-        for name, words, last, calls in con.execute("""
+        for name, words, last, calls, chars in con.execute("""
             SELECT u.name,
                    (SELECT COUNT(*) FROM items i WHERE i.user_id = u.id AND i.kind = 'word'),
                    (SELECT MAX(last_used) FROM tokens t WHERE t.user_id = u.id),
-                   (SELECT COALESCE(SUM(calls), 0) FROM ai_usage a WHERE a.user_id = u.id)
+                   (SELECT COALESCE(SUM(calls), 0) FROM ai_usage a WHERE a.user_id = u.id),
+                   (SELECT COALESCE(SUM(tts_chars), 0) FROM ai_usage a WHERE a.user_id = u.id)
             FROM users u ORDER BY u.name"""):
             seen = time.strftime("%Y-%m-%d %H:%M", time.localtime(last / 1000)) if last else "never"
-            print(f"{name:16} {words:5} words  {calls:5} ai calls  last seen {seen}")
+            print(f"{name:16} {words:5} words  {calls:5} ai calls  {chars:7} voice chars  last seen {seen}")
     elif cmd == "export" and len(args) == 2:
         S, _, _ = load_state(con, user_by_name(con, args[1])[0])
         S["log"] = [json.loads(js) for (js,) in con.execute("SELECT json FROM log WHERE user_id = ? ORDER BY t", (user_by_name(con, args[1])[0],))]

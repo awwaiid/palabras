@@ -37,10 +37,20 @@ home-screen web apps that keep their own cookies.
 | `PV_BASE` | Path prefix behind the proxy, used as the cookie path (`/spanish`). |
 | `PV_DB` | sqlite file (`/data/palabra.db` in the container). |
 | `PV_AI_DAILY` | Claude calls per learner per day (default 200). |
+| `ELEVENLABS_API_KEY` | Enables ElevenLabs voices; without it the device's speech voice is used. |
 
 Claude models: `quick` tier (explain, import) uses `claude-haiku-5-5` at low effort; stories and
 adventures use `claude-sonnet-5-5` at medium effort with server-side refusal fallback.
 Token usage per learner per day is recorded in the `ai_usage` table.
+
+Voice: with `ELEVENLABS_API_KEY` set, every Spanish playback goes through `GET api/tts`, which
+generates each voice/model/speed/text once with ElevenLabs and keeps the mp3 under `/data/tts/`
+(so a word is billed once across all learners) and marks it immutable for the browser cache.
+Single words use `eleven_flash_v2_5`, sentences `eleven_multilingual_v2`
+(`PV_TTS_WORD_MODEL` / `PV_TTS_LONG_MODEL`). The picker in Palabras → Voice lists the
+account's Spanish voices plus the most used Latin American, Mexican and Colombian library
+voices. Library voices need a paid ElevenLabs plan or prepaid credits; when ElevenLabs refuses
+a voice the server stops asking for 10 minutes and the app uses the device's voice.
 
 ## Local run
 
