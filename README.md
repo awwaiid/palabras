@@ -1,58 +1,52 @@
 # Palabra Viva
 
-A phone-first Latin American Spanish trainer: spaced-repetition flashcards, Claude-written
-stories and adventures inside your own vocabulary, and a Duolingo word import. It started as a
-Claude artifact; [docs/HANDOFF.md](docs/HANDOFF.md) has the original design notes and the remaining
-feature plan (ElevenLabs voice, pronunciation practice).
+A Latin American Spanish trainer for adults who want to actually learn the language, built
+around the parts of Duolingo that work and without the parts that exist to keep you on the app.
 
-## Pieces
+| Review | Flashcard | Story | Voice |
+|---|---|---|---|
+| ![Review home with stats](docs/screenshots/repaso.png) | ![English to Spanish card with a personal connection note](docs/screenshots/tarjeta.png) | ![A story with a tapped word explained](docs/screenshots/cuento.png) | ![Choosing a Latin American voice, dark mode](docs/screenshots/voz.png) |
 
-- `index.html` — the whole app, no build step.
-- `server.py` — stdlib Python + sqlite. Serves the page, stores each learner's words, cards,
-  stories and review log, and proxies Claude so no API key reaches the browser.
+## What it's for
 
-The app keeps its state object `S` in memory and, after each change, sends only the items that
-changed (`word`, `card`, `story`, `meta`, plus new review-log entries) to `POST api/sync`.
-When the page comes back into view it checks `GET api/stamp` and reloads if another device saved since.
+- **Remember words for good.** Spaced-repetition flashcards: Spanish → English first, then
+English → Spanish once you know the meaning. Nouns are colored by gender, and every card has
+room for your own connection to the word.
+- **Read real Spanish early.** Claude writes short stories and choose-your-own-adventures using
+the words you already know, plus a few new ones you can guess from context. Tap any word for
+its meaning, base form and grammar.
+- **Hear it the way people say it.** Native Latin American voices read every word and sentence,
+and stories play along sentence by sentence.
+- **Latin American Spanish throughout:** *ustedes*, not *vosotros*; *carro*, *celular*,
+*computadora*, *jugo*.
 
-## Learners
+## What it leaves out
 
-There are no passwords. Each learner gets a personal login link; opening it once sets a
-long-lived cookie on that device. The sign-in screen also accepts a pasted link, for
-home-screen web apps that keep their own cookies.
+No streaks, leagues, hearts, guilt notifications or inflated progress. The numbers are the plain ones:
+cards due, new words ready today, words that have stuck for three weeks or more, and your real
+recall rate over the last 30 days.
 
-    docker compose exec palabra-viva python3 server.py adduser beth   # prints her link
-    docker compose exec palabra-viva python3 server.py link beth      # another link (new device)
-    docker compose exec palabra-viva python3 server.py revoke beth    # sign out everywhere
-    docker compose exec palabra-viva python3 server.py users
-    docker compose exec palabra-viva python3 server.py export beth > beth.json
-    docker compose exec -T palabra-viva python3 server.py import beth < beth.json
+## Using it
 
-## Configuration
+Paste your Duolingo word list (any messy format works) and it becomes your deck, or start from
+the built-in starter words. Everyone gets their own account through a personal login link, with
+nothing to sign up for, and your words and history follow you between phone and laptop.
 
-| Variable | Meaning |
-|---|---|
-| `ANTHROPIC_API_KEY` | Enables stories, adventures, "Explain this form" and the smart import. Without it those features hide themselves. |
-| `PV_PUBLIC` | Public URL of the app, used in printed login links (`https://thelackthereof.org/palabras`). |
-| `PV_BASE` | Path prefix behind the proxy, used as the cookie path (`/palabras`). |
-| `PV_DB` | sqlite file (`/data/palabra.db` in the container). |
-| `PV_AI_DAILY` | Claude calls per learner per day (default 200). |
-| `ELEVENLABS_API_KEY` | Enables ElevenLabs voices; without it the device's speech voice is used. |
+## Running your own
 
-Claude models: `quick` tier (explain, import) uses `claude-haiku-5-5` at low effort; stories and
-adventures use `claude-sonnet-5-5` at medium effort with server-side refusal fallback.
-Token usage per learner per day is recorded in the `ai_usage` table.
+One HTML file and a small Python server with sqlite:
 
-Voice: with `ELEVENLABS_API_KEY` set, every Spanish playback goes through `GET api/tts`, which
-generates each voice/model/speed/text once with ElevenLabs and keeps the mp3 under `/data/tts/`
-(so a word is billed once across all learners) and marks it immutable for the browser cache.
-Single words use `eleven_flash_v2_5`, sentences `eleven_multilingual_v2`
-(`PV_TTS_WORD_MODEL` / `PV_TTS_LONG_MODEL`). The picker in Palabras → Voice lists the
-account's Spanish voices plus the most used Latin American, Mexican and Colombian library
-voices. Library voices need a paid ElevenLabs plan or prepaid credits; when ElevenLabs refuses
-a voice the server stops asking for 10 minutes and the app uses the device's voice.
+```sh
+docker build -t palabras .
+docker run -d --name palabras -p 8080:8080 -v palabras:/data \
+  -e PV_PUBLIC=http://localhost:8080 \
+  -e ANTHROPIC_API_KEY=… -e ELEVENLABS_API_KEY=… palabras
+docker exec palabras python3 server.py adduser yourname # prints your login link
+```
 
-## Local run
+Both keys are optional. Without Claude, stories and adventures stay hidden; without ElevenLabs,
+the device's own voice reads aloud. [AGENTS.md](AGENTS.md) explains how the pieces fit.
 
-    PV_DB=/tmp/pv.db python3 server.py adduser me
-    PV_DB=/tmp/pv.db python3 server.py          # http://localhost:8080/#login=…
+## License
+
+[MIT](LICENSE)

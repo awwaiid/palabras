@@ -1053,7 +1053,7 @@ function renderVoices(){
   const cur = TTS ? ttsVoice() : "device";
   const row = (id, name, sub, preview) => `<div class="vrow" aria-current="${id === cur}"><button class="pick" data-voice="${esc(id)}"><b>${esc(name)}</b><small>${esc(sub)}</small></button>${preview ? `<button class="iconbtn" data-preview="${esc(preview)}" aria-label="Sample of ${esc(name)}">▶</button>` : ""}</div>`;
   $("#voiceList").innerHTML = voiceList.map(v => {
-    const [name, desc] = v.name.split(/\s+-\s+/);
+    const [name, desc] = v.name.split(/\s*[-–—]\s+/);
     return row(v.id, name, [v.accent, v.gender, desc].filter(Boolean).join(" · "), v.preview);
   }).join("") + row("device", "This device's voice", "Free and works offline", "");
   document.querySelectorAll("#speedChips .chip").forEach(c => c.setAttribute("aria-pressed", c.dataset.s === ttsSpeed()));
