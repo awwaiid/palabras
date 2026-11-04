@@ -232,6 +232,7 @@ details summary{cursor:pointer;font-weight:700}
       <div class="stats" id="stats"></div>
       <button class="btn primary block" id="startBtn">Start review</button>
       <p class="muted" id="nextNote" style="margin:0"></p>
+      <button class="btn block" id="moreNewBtn" hidden></button>
       <div class="panel stack">
         <div class="row" style="justify-content:space-between"><h2>Emparejar</h2><span class="muted" style="font-size:.85rem">Match pairs · doesn't affect your schedule</span></div>
         <button class="btn" id="matchBtn">Play a round</button>
@@ -573,7 +574,10 @@ function fmtGap(ms){
   return (d/365).toFixed(1) + " yr";
 }
 const today = () => new Date().toLocaleDateString("en-CA");
-function newLeft(){ if (S.newDay.date !== today()) S.newDay = { date: today(), n: 0 }; return Math.max(0, S.settings.newPerDay - S.newDay.n); }
+function newLeft(){ if (S.newDay.date !== today()) S.newDay = { date: today(), n: 0 }; return Math.max(0, S.settings.newPerDay + (S.newDay.extra || 0) - S.newDay.n); }
+function batchSize(){ return Math.max(5, S.settings.newPerDay); }
+function moreNewReady(){ return newLeft() === 0 && newCandidates().length > 0; }   // today's new words are used up but there are more to learn
+function addBatch(){ newLeft(); S.newDay.extra = (S.newDay.extra || 0) + batchSize(); save(); }
 function liveCards(){ return Object.values(S.cards).filter(c => S.words[c.w] && (c.d === "r" || S.settings.production)); }
 function newCandidates(){
   const all = liveCards();
@@ -833,9 +837,13 @@ function renderReviewHome(){
   $("#startBtn").textContent = any ? (s.due ? `Review ${s.due + s.avail} cards` : `Learn ${s.avail} new words`) : "Nothing due";
   $("#nextNote").textContent = any ? `${s.seen} of ${s.total} words started. ${s.learning ? s.learning + " in short-term practice." : ""}`
     : (s.upcoming ? `All caught up. The next card comes back in ${fmtGap(s.upcoming.due - Date.now())}.` : "Add words in Palabras to get started.");
+  const more = moreNewReady(), batch = Math.min(batchSize(), newCandidates().length);
+  $("#moreNewBtn").hidden = !more;
+  if (more) $("#moreNewBtn").textContent = `Add ${batch} more new word${batch === 1 ? "" : "s"} today`;
   $("#npd").textContent = S.settings.newPerDay;
   $("#prodToggle").checked = S.settings.production;
 }
+$("#moreNewBtn").onclick = () => { addBatch(); renderReviewHome(); };
 $("#npdMinus").onclick = () => { S.settings.newPerDay = Math.max(0, S.settings.newPerDay - 5); save(); renderReviewHome(); };
 $("#npdPlus").onclick = () => { S.settings.newPerDay = Math.min(50, S.settings.newPerDay + 5); save(); renderReviewHome(); };
 $("#prodToggle").onchange = e => { S.settings.production = e.target.checked; save(); renderReviewHome(); };
@@ -855,8 +863,11 @@ function startSession(){
   $("#revHome").hidden = true; $("#revSession").hidden = false;
   const box = $("#revSession");
   if (!cur) {
-    box.innerHTML = `<div class="panel stack"><h2>That's everything for now</h2><p class="muted" style="margin:0">You reviewed ${sessionDone} card${sessionDone === 1 ? "" : "s"}.</p><button class="btn primary" id="doneBtn">Back</button></div>`;
-    $("#doneBtn").onclick = renderReviewHome; return;
+    const more = moreNewReady(), batch = Math.min(batchSize(), newCandidates().length);
+    box.innerHTML = `<div class="panel stack"><h2>That's everything for now</h2><p class="muted" style="margin:0">You reviewed ${sessionDone} card${sessionDone === 1 ? "" : "s"}.${more ? " Today's new words are done, but there are more waiting." : ""}</p>${more ? `<button class="btn primary" id="moreBtn">Add ${batch} more new word${batch === 1 ? "" : "s"} today</button>` : ""}<button class="btn${more ? "" : " primary"}" id="doneBtn">Back</button></div>`;
+    $("#doneBtn").onclick = renderReviewHome;
+    if (more) $("#moreBtn").onclick = () => { addBatch(); startSession(); };
+    return;
   }
   const w = S.words[cur.w], rec = cur.d === "r";
   const front = rec
