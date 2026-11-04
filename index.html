@@ -580,15 +580,16 @@ function newCandidates(){
   return all.filter(c => c.state === "new" && (c.d === "r" || (S.cards[c.w+"|r"] && S.cards[c.w+"|r"].state === "review")))
     .sort((a,b) => (a.d === b.d ? 0 : a.d === "p" ? -1 : 1) || S.words[a.w].added - S.words[b.w].added);
 }
-let sessionCount = 0;
+let sessionCount = 0, lastWord = null;
+const notLast = list => list.find(c => c.w !== lastWord) || list[0];   // the other direction of the word just graded waits a turn
 function pickNext(){
   const now = Date.now(), cards = liveCards();
   const due = cards.filter(c => c.state !== "new" && c.due <= now).sort((a,b) => a.due-b.due);
   const nl = newLeft(), nc = nl > 0 ? newCandidates() : [];
-  if (nc.length && (!due.length || sessionCount % 4 === 3)) return nc[0];
-  if (due.length) return due[0];
+  if (nc.length && (!due.length || sessionCount % 4 === 3)) return notLast(nc);
+  if (due.length) return notLast(due);
   const soon = cards.filter(c => (c.state === "learning" || c.state === "relearning") && c.due <= now + 20*MIN).sort((a,b) => a.due-b.due);
-  return soon[0] || null;
+  return notLast(soon) || null;
 }
 
 /* ---------- toast / sheet ---------- */
@@ -887,7 +888,7 @@ function answer(g){
   S.cards[cur.id] = n;
   if (wasNew) { newLeft(); S.newDay.n++; }
   S.log.push({ t: Date.now(), g, rev: wasRev }); if (S.log.length > 3000) S.log.splice(0, S.log.length - 3000);
-  sessionCount++; sessionDone++; save(); startSession();
+  lastWord = cur.w; sessionCount++; sessionDone++; save(); startSession();
 }
 
 /* match game */
