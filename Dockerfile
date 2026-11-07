@@ -1,7 +1,7 @@
 FROM python:3.12-alpine
 RUN pip install --no-cache-dir anthropic==2.3.0
 WORKDIR /app
-COPY server.py index.html ./
+COPY server.py index.html freq.json ./
 ENV PV_DB=/data/palabra.db
 VOLUME /data
 EXPOSE 8080
