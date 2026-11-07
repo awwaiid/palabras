@@ -21,6 +21,10 @@ for reading, Atkinson Hyperlegible for UI, violet accent. Keep the design as it 
 ## Layout
 
 - `index.html` is the whole app: markup, CSS and one `<script>`. No build step, no framework.
+- `freq.json` is the 3,000 most common Spanish lemmas in frequency order (`r` rank, `es` headword
+with article, `en`, `pos`, `g`), built from OpenSubtitles lemma counts (hermitdave/FrequencyWords
+via doozan/spanish_data, CC BY-SA) with glosses generated for this app. The app reads it once at
+boot; it is not learner data. Batches are 500 ranks each, loosely labelled A1/A2/B1.
 - `server.py` is stdlib Python (`http.server`, `sqlite3`, `urllib`) plus the `anthropic` SDK.
 `python3 server.py --help`-style usage is in its docstring; the CLI manages learners.
 - `Dockerfile` builds the image; data lives in `/data` (`palabra.db` and the `tts/` audio cache).
@@ -31,9 +35,23 @@ corrections) are not.
 ## The app's state
 
 All learner data is one object, `S`: `words` (keyed by `keyOf(es)`, which drops the article),
-`cards` (two per word, `<key>|r` Spanish → English and `<key>|p` English → Spanish; the `p` card
-unlocks when the `r` card reaches review), `log` (review history), `newDay`, `settings`
-(including `voice` and `speed`), `stories`, and `adv` (the current adventure).
+`cards` (two per word, `<key>|r` Spanish → English and `<key>|p` English → Spanish; introducing a
+word shows the `r` card and the `p` card follows right away, so N new words is 2N cards and the
+daily cap counts words), `log` (review history), `newDay`, `settings` (including `voice`,
+`speed` and `newOrder`: `freq` takes new words by frequency rank, `added` in the order they were
+added), `stories`, `adv` (the current adventure), `conj` (per verb-and-pronoun right/wrong counts
+from the Conjugar drill, used only to pick weak forms) and `skip` (common-list words the learner
+deleted or skipped, so they are not introduced again).
+
+New words come from `newCandidates()`: the learner's own unstarted words and the common list
+merged by rank (unranked own words last). A common-list word only enters `S.words` (source
+`freq`) when it is introduced or the learner adds it from the batch view, so the list itself is
+never synced. The Repaso header counts words learned (the `r` card has reached review), not the
+size of the list.
+
+Conjugar is present indicative only: `VERBS` in `index.html` is the table (infinitive, meaning,
+change spec) and `present()` derives the five forms (no vosotros) from regular endings plus the
+spec. Add tenses by adding an endings table and a spec, not by hand-listing forms.
 
 Code mutates `S` directly and calls `save()`. `save()` debounces into `flush()`, which diffs `S`
 against the last synced copy (`itemsOf`/`changes`) and posts only changed items to `api/sync`.
@@ -49,6 +67,7 @@ All under the app's base path; everything except `/`, `/health` and `api/login` 
 | Route | Purpose |
 |---|---|
 | `GET /` | The app. Sends its own `Permissions-Policy` (see below). |
+| `GET /freq.json` | The common-words list, public, cached an hour. |
 | `POST api/login`, `api/logout` | Exchange a login-link token for the cookie, or clear it. |
 | `GET api/me` | Name, and whether Claude (`ai`) and ElevenLabs (`tts`) are configured. |
 | `GET api/state`, `GET api/stamp` | Load `S`; check whether another device saved since. |

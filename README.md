@@ -10,9 +10,14 @@ around the parts of Duolingo that work and without the parts that exist to keep 
 
 ## What it's for
 
-- **Remember words for good.** Spaced-repetition flashcards: Spanish → English first, then
-English → Spanish once you know the meaning. Nouns are colored by gender, and every card has
-room for your own connection to the word.
+- **Learn the words that matter first.** New words come from the 3,000 most common words of
+spoken Spanish, in order, in batches of 500, with the words you bring from Duolingo slotted in
+by rank. The first 1,000 cover most of what people say.
+- **Remember words for good.** Spaced-repetition flashcards in both directions, Spanish → English
+and English → Spanish, from the day you meet a word. Nouns are colored by gender, and every card
+has room for your own connection to the word.
+- **Conjugate the verbs you actually use.** A present-tense drill on the most common verbs,
+weighted toward the forms you get wrong.
 - **Read real Spanish early.** Claude writes short stories and choose-your-own-adventures using
 the words you already know, plus a few new ones you can guess from context. Tap any word for
 its meaning, base form and grammar.
@@ -24,8 +29,8 @@ and stories play along sentence by sentence.
 ## What it leaves out
 
 No streaks, leagues, hearts, guilt notifications or inflated progress. The numbers are the plain ones:
-cards due, new words ready today, words that have stuck for three weeks or more, and your real
-recall rate over the last 30 days.
+cards due, new words ready today, words learned, words that have stuck for three weeks or more, and
+your real recall rate over the last 30 days.
 
 ## Using it
 

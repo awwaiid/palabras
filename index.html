@@ -164,6 +164,21 @@ details summary{cursor:pointer;font-weight:700}
 .switch{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .stepper{display:flex;align-items:center;gap:8px}
 .stepper b{min-width:2ch;text-align:center;font-variant-numeric:tabular-nums}
+/* common-words batches and the conjugation drill */
+.bars{display:flex;flex-direction:column;gap:6px}
+.brow{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;text-align:left;width:100%}
+.brow[aria-expanded="true"]{border-color:var(--accent)}
+.brow b{font-variant-numeric:tabular-nums}
+.brow small{color:var(--muted);font-size:.8rem;grid-column:1/-1}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.bar .done{background:var(--good)} .bar .lrn{background:var(--hard)}
+.keys{display:flex;gap:6px;flex-wrap:wrap}
+.keys button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 0;font-family:var(--f-read);font-size:1.05rem;flex:1}
+.card .pron{font-family:var(--f-ui);font-size:1.15rem;font-weight:700;color:var(--accent);margin-top:6px}
+.cres{font-size:1.5rem;font-family:var(--f-read);font-weight:600}
+.cres.ok{color:var(--good)} .cres.no{color:var(--bad)}
+.pill.skip{color:var(--muted);border-style:dashed}
 </style>
 
 </head>
@@ -237,16 +252,22 @@ details summary{cursor:pointer;font-weight:700}
         <div class="row" style="justify-content:space-between"><h2>Emparejar</h2><span class="muted" style="font-size:.85rem">Match pairs · doesn't affect your schedule</span></div>
         <button class="btn" id="matchBtn">Play a round</button>
       </div>
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between"><h2>Conjugar</h2><span class="muted" style="font-size:.85rem">Present tense · doesn't affect your schedule</span></div>
+        <button class="btn" id="conjBtn">Practice 10 forms</button>
+      </div>
       <details class="panel">
         <summary>Review settings</summary>
         <div class="stack" style="margin-top:12px">
           <div class="switch"><span>New words per day</span><span class="stepper"><button class="iconbtn" id="npdMinus" aria-label="Fewer">−</button><b id="npd"></b><button class="iconbtn" id="npdPlus" aria-label="More">+</button></span></div>
+          <div class="stack" style="gap:6px"><span>Next new words</span><div class="chips" id="orderChips"><button class="chip" data-o="freq">Most common first</button><button class="chip" data-o="added">In the order I added them</button></div></div>
           <label class="switch"><span>Also practice English → Spanish<br><small class="muted">Added once you know a word's meaning</small></span><input type="checkbox" id="prodToggle"></label>
         </div>
       </details>
     </div>
     <div id="revSession" class="stack" hidden></div>
     <div id="matchView" class="stack" hidden></div>
+    <div id="conjView" class="stack" hidden></div>
   </section>
 
   <!-- STORIES -->
@@ -297,6 +318,14 @@ details summary{cursor:pointer;font-weight:700}
           <label class="switch"><span>Remove the sample starter words</span><input type="checkbox" id="dropStarter" checked></label>
           <button class="btn primary" id="importBtn">Import</button>
           <div id="importStatus"></div>
+        </div>
+      </details>
+      <details class="panel" id="commonBox">
+        <summary>The 3,000 most common words</summary>
+        <div class="stack" style="margin-top:12px">
+          <p class="muted" style="margin:0;font-size:.92rem">Ranked by how often they turn up in everyday spoken Spanish, in batches of 500. New words come from this list in order, with the words you added slotted in by rank. Tap a batch to see it.</p>
+          <div class="bars" id="batchList"></div>
+          <div class="wlist" id="batchWords" hidden></div>
         </div>
       </details>
       <details class="panel" id="wordsBox">
@@ -458,7 +487,7 @@ function parseAnnotated(src){
 
 /* ---------- state ---------- */
 function fresh(){
-  return { words:{}, cards:{}, log:[], newDay:{date:"",n:0}, settings:{newPerDay:10, production:true}, stories:[], adv:null };
+  return { words:{}, cards:{}, log:[], newDay:{date:"",n:0}, settings:{newPerDay:10, production:true, newOrder:"freq"}, stories:[], adv:null, conj:{}, skip:{} };
 }
 let S;
 
@@ -474,7 +503,7 @@ function itemsOf(s){
   for (const [k, w] of Object.entries(s.words)) m.set("word\t" + k, JSON.stringify(w));
   for (const [k, c] of Object.entries(s.cards)) m.set("card\t" + k, JSON.stringify(c));
   for (const st of s.stories) m.set("story\t" + st.id, JSON.stringify(st));
-  for (const k of ["settings", "newDay", "adv"]) m.set("meta\t" + k, JSON.stringify(s[k] ?? null));
+  for (const k of ["settings", "newDay", "adv", "conj", "skip"]) m.set("meta\t" + k, JSON.stringify(s[k] ?? null));
   return m;
 }
 const lastLogT = s => s.log.reduce((m, l) => Math.max(m, l.t), 0);
@@ -518,12 +547,12 @@ document.addEventListener("visibilitychange", async () => {
     const r = await api("stamp");
     if (r.stamp === stamp || flushing || changes().any) return;
     await loadState();
-    const busy = !$("#revSession").hidden || !$("#matchView").hidden || !$("#storyRead").hidden || !$("#sheet").hidden;
+    const busy = !$("#revSession").hidden || !$("#matchView").hidden || !$("#conjView").hidden || !$("#storyRead").hidden || !$("#sheet").hidden;
     if (!busy) show(curTab);
   } catch (e) {}
 });
 
-const ART = /^(el|la|los|las|un|una)\s+/i;
+const ART = /^(el\/la|la\/el|el|la|los|las|un|una)\s+/i;
 function keyOf(es){ return String(es||"").trim().toLowerCase().replace(ART, "").replace(/[¿?¡!.,;:]/g, "").trim(); }
 function addWord(es, en, pos, gender, source){
   es = String(es||"").trim(); if (!es) return null;
@@ -579,18 +608,41 @@ function batchSize(){ return Math.max(5, S.settings.newPerDay); }
 function moreNewReady(){ return newLeft() === 0 && newCandidates().length > 0; }   // today's new words are used up but there are more to learn
 function addBatch(){ newLeft(); S.newDay.extra = (S.newDay.extra || 0) + batchSize(); save(); }
 function liveCards(){ return Object.values(S.cards).filter(c => S.words[c.w] && (c.d === "r" || S.settings.production)); }
-function newCandidates(){
-  const all = liveCards();
-  return all.filter(c => c.state === "new" && (c.d === "r" || (S.cards[c.w+"|r"] && S.cards[c.w+"|r"].state === "review")))
-    .sort((a,b) => (a.d === b.d ? 0 : a.d === "p" ? -1 : 1) || S.words[a.w].added - S.words[b.w].added);
+
+/* ---------- the common-words list and what to learn next ---------- */
+let FREQ = [], FREQK = new Map();
+async function loadFreq(){
+  try { const d = await (await fetch("freq.json")).json(); FREQ = d.words || []; FREQK = new Map(FREQ.map(f => [keyOf(f.es), f])); } catch (e) {}
 }
+const BATCH = 500, BANDS = ["A1", "A2", "A2", "B1", "B1", "B1"];
+const rankOf = k => FREQK.get(k)?.r;
+const newOrder = () => S.settings.newOrder || "freq";
+const notStarted = k => !S.cards[k+"|r"] || S.cards[k+"|r"].state === "new";
+/* words still to introduce, in the order they will come: {k, w (in the learner's list), f (on the common list)} */
+function newCandidates(){
+  const mine = Object.values(S.words).filter(w => notStarted(w.id));
+  const have = new Set(Object.keys(S.words));
+  const common = FREQ.filter(f => !have.has(keyOf(f.es)) && !S.skip[keyOf(f.es)]).map(f => ({ k: keyOf(f.es), f }));
+  if (newOrder() === "added") return mine.sort((a,b) => a.added - b.added).map(w => ({ k: w.id, w, f: FREQK.get(w.id) })).concat(common);
+  const ranked = [], rest = [];
+  for (const w of mine) (rankOf(w.id) ? ranked : rest).push({ k: w.id, w, f: FREQK.get(w.id) });
+  return ranked.concat(common).sort((a,b) => a.f.r - b.f.r).concat(rest.sort((a,b) => a.w.added - b.w.added));
+}
+/* puts a common-list word into the learner's list if it is not there yet; returns its Spanish → English card */
+function introduce(c){
+  if (!S.words[c.k]) addWord(c.f.es, c.f.en, c.f.pos, c.f.g, "freq");
+  ensureCards(c.k); return S.cards[c.k+"|r"];
+}
+/* English → Spanish cards of words already introduced: they come up right away and do not count against the daily cap */
+function pendingProd(){ return S.settings.production ? Object.values(S.cards).filter(c => c.d === "p" && c.state === "new" && S.words[c.w] && !notStarted(c.w)) : []; }
 let sessionCount = 0, lastWord = null;
 const notLast = list => list.find(c => c.w !== lastWord) || list[0];   // the other direction of the word just graded waits a turn
 function pickNext(){
   const now = Date.now(), cards = liveCards();
-  const due = cards.filter(c => c.state !== "new" && c.due <= now).sort((a,b) => a.due-b.due);
-  const nl = newLeft(), nc = nl > 0 ? newCandidates() : [];
-  if (nc.length && (!due.length || sessionCount % 4 === 3)) return notLast(nc);
+  const due = pendingProd().concat(cards.filter(c => c.state !== "new" && c.due <= now).sort((a,b) => a.due-b.due));
+  const other = due.filter(c => c.w !== lastWord);
+  const nc = newLeft() > 0 ? newCandidates() : [];
+  if (nc.length && (!other.length || sessionCount % 4 === 3)) return introduce(nc.find(c => c.k !== lastWord) || nc[0]);
   if (due.length) return notLast(due);
   const soon = cards.filter(c => (c.state === "learning" || c.state === "relearning") && c.due <= now + 20*MIN).sort((a,b) => a.due-b.due);
   return notLast(soon) || null;
@@ -817,16 +869,18 @@ function stats(){
   const learning = cards.filter(c => c.state === "learning" || c.state === "relearning").length;
   const solid = Object.keys(S.words).filter(k => (S.cards[k+"|r"]?.ivl||0) >= 21 && S.cards[k+"|r"].state === "review").length;
   const seen = Object.keys(S.words).filter(k => S.cards[k+"|r"] && S.cards[k+"|r"].state !== "new").length;
+  const learned = Object.keys(S.words).filter(k => S.cards[k+"|r"]?.state === "review").length;
+  const common = FREQ.filter(f => S.cards[keyOf(f.es)+"|r"]?.state === "review").length;
   const since = now - 30*DAY, rv = S.log.filter(l => l.t > since && l.rev);
   const ret = rv.length >= 10 ? Math.round(100 * rv.filter(l => l.g > 0).length / rv.length) : null;
   const avail = Math.min(newLeft(), newCandidates().length);
   const upcoming = cards.filter(c => c.state !== "new" && c.due > now).sort((a,b) => a.due-b.due)[0];
-  return { due, learning, solid, seen, ret, avail, total: Object.keys(S.words).length, upcoming };
+  return { due, learning, solid, seen, learned, common, ret, avail, total: Object.keys(S.words).length, upcoming };
 }
 function renderReviewHome(){
-  $("#revSession").hidden = true; $("#matchView").hidden = true; $("#revHome").hidden = false;
+  $("#revSession").hidden = true; $("#matchView").hidden = true; $("#conjView").hidden = true; $("#revHome").hidden = false;
   const s = stats();
-  $("#revSub").textContent = `${s.total} words`;
+  $("#revSub").textContent = `${s.learned} word${s.learned === 1 ? "" : "s"} learned`;
   $("#stats").innerHTML = `
     <div class="stat lead"><b>${s.due}</b><span>due for review</span></div>
     <div class="stat"><b>${s.avail}</b><span>new words ready today</span></div>
@@ -834,15 +888,17 @@ function renderReviewHome(){
     <div class="stat"><b>${s.ret === null ? "—" : s.ret + "%"}</b><span>${s.ret === null ? "recall rate (after 10 reviews)" : "recalled on review, last 30 days"}</span></div>`;
   const any = s.due + s.avail > 0 || !!pickNext();
   $("#startBtn").disabled = !any;
-  $("#startBtn").textContent = any ? (s.due ? `Review ${s.due + s.avail} cards` : `Learn ${s.avail} new words`) : "Nothing due";
-  $("#nextNote").textContent = any ? `${s.seen} of ${s.total} words started. ${s.learning ? s.learning + " in short-term practice." : ""}`
+  $("#startBtn").textContent = any ? (s.due ? `Review ${s.due} card${s.due === 1 ? "" : "s"}${s.avail ? ` + ${s.avail} new word${s.avail === 1 ? "" : "s"}` : ""}` : `Learn ${s.avail} new word${s.avail === 1 ? "" : "s"}`) : "Nothing due";
+  $("#nextNote").textContent = any ? `${s.seen} started · ${s.common} of the 3,000 most common learned.${s.learning ? ` ${s.learning} in short-term practice.` : ""}`
     : (s.upcoming ? `All caught up. The next card comes back in ${fmtGap(s.upcoming.due - Date.now())}.` : "Add words in Palabras to get started.");
   const more = moreNewReady(), batch = Math.min(batchSize(), newCandidates().length);
   $("#moreNewBtn").hidden = !more;
   if (more) $("#moreNewBtn").textContent = `Add ${batch} more new word${batch === 1 ? "" : "s"} today`;
   $("#npd").textContent = S.settings.newPerDay;
   $("#prodToggle").checked = S.settings.production;
+  document.querySelectorAll("#orderChips .chip").forEach(c => c.setAttribute("aria-pressed", c.dataset.o === newOrder()));
 }
+$("#orderChips").onclick = e => { const c = e.target.closest(".chip"); if (!c) return; S.settings.newOrder = c.dataset.o; save(); renderReviewHome(); };
 $("#moreNewBtn").onclick = () => { addBatch(); renderReviewHome(); };
 $("#npdMinus").onclick = () => { S.settings.newPerDay = Math.max(0, S.settings.newPerDay - 5); save(); renderReviewHome(); };
 $("#npdPlus").onclick = () => { S.settings.newPerDay = Math.min(50, S.settings.newPerDay + 5); save(); renderReviewHome(); };
@@ -897,7 +953,7 @@ function answer(g){
   const n = sched(cur, g);
   if (n.state === "review" && n.ivl > 2 && g > 0) { const f = 1 + (Math.random()*0.1 - 0.05); n.ivl = Math.round(n.ivl * f); n.due = Date.now() + n.ivl*DAY; }
   S.cards[cur.id] = n;
-  if (wasNew) { newLeft(); S.newDay.n++; }
+  if (wasNew && cur.d === "r") { newLeft(); S.newDay.n++; }   // the cap counts words; the English → Spanish card follows for free
   S.log.push({ t: Date.now(), g, rev: wasRev }); if (S.log.length > 3000) S.log.splice(0, S.log.length - 3000);
   lastWord = cur.w; sessionCount++; sessionDone++; save(); startSession();
 }
@@ -929,6 +985,289 @@ function startMatch(){
   };
   $("#mBack").onclick = renderReviewHome;
 }
+
+/* ---------- Conjugar: present tense of the most common verbs ---------- */
+const PRON = ["yo", "tú", "él / ella / usted", "nosotros", "ellos / ustedes"];
+const ENDS = { ar: ["o","as","a","amos","an"], er: ["o","es","e","emos","en"], ir: ["o","es","e","imos","en"] };
+// infinitive|meaning|how it changes: ie/ue/i/u stem change in all but nosotros · g/zc/j irregular yo · y for -uir · acc=ú or í · yo=form · all=the five forms
+const VERBS = `ser|to be|all=soy eres es somos son
+estar|to be (state, place)|all=estoy estás está estamos están
+tener|to have|ie,g
+ir|to go|all=voy vas va vamos van
+hacer|to do, to make|yo=hago
+poder|to be able to, can|ue
+decir|to say, to tell|i,yo=digo
+querer|to want, to love|ie
+ver|to see|yo=veo
+saber|to know (facts)|yo=sé
+creer|to believe|
+dar|to give|yo=doy
+deber|should, to owe|
+dejar|to leave, to let|
+hablar|to speak|
+pasar|to pass, to happen|
+llegar|to arrive|
+venir|to come|ie,g
+poner|to put|g
+pensar|to think|ie
+salir|to go out, to leave|g
+parecer|to seem|zc
+esperar|to wait, to hope|
+llamar|to call|
+necesitar|to need|
+gustar|to be pleasing (me gusta)|
+mirar|to look at|
+encontrar|to find|ue
+seguir|to follow, to continue|i,yo=sigo
+quedar|to stay, to remain|
+llevar|to carry, to wear|
+buscar|to look for|
+sentir|to feel|ie
+entender|to understand|ie
+vivir|to live|
+trabajar|to work|
+conocer|to know (people, places)|zc
+morir|to die|ue
+volver|to return|ue
+tratar|to try, to treat|
+tomar|to take, to drink|
+oír|to hear|all=oigo oyes oye oímos oyen
+preguntar|to ask|
+perder|to lose|ie
+comer|to eat|
+ayudar|to help|
+empezar|to begin|ie
+escuchar|to listen|
+jugar|to play|u
+sacar|to take out|
+dormir|to sleep|ue
+entrar|to enter|
+abrir|to open|
+recordar|to remember|ue
+pedir|to ask for, to order|i
+contar|to count, to tell|ue
+cambiar|to change|
+importar|to matter|
+mover|to move|ue
+ganar|to win, to earn|
+pagar|to pay|
+leer|to read|
+escribir|to write|
+aprender|to learn|
+correr|to run|
+caer|to fall|yo=caigo
+traer|to bring|yo=traigo
+terminar|to finish|
+acabar|to finish, to end|
+olvidar|to forget|
+comprar|to buy|
+beber|to drink|
+vender|to sell|
+cerrar|to close|ie
+usar|to use|
+cuidar|to take care of|
+intentar|to try|
+decidir|to decide|
+servir|to serve|i
+preferir|to prefer|ie
+permitir|to allow|
+recibir|to receive|
+existir|to exist|
+ocurrir|to happen|
+subir|to go up|
+bajar|to go down|
+romper|to break|
+conseguir|to get, to achieve|i,yo=consigo
+elegir|to choose|i,j
+construir|to build|y
+conducir|to drive|zc
+producir|to produce|zc
+ofrecer|to offer|zc
+crecer|to grow|zc
+nacer|to be born|zc
+aparecer|to appear|zc
+reconocer|to recognize|zc
+traducir|to translate|zc
+agradecer|to thank|zc
+continuar|to continue|acc=ú
+enviar|to send|acc=í
+repetir|to repeat|i
+vestir|to dress|i
+mentir|to lie|ie
+costar|to cost|ue
+mostrar|to show|ue
+probar|to try, to taste|ue
+soñar|to dream|ue
+volar|to fly|ue
+sonar|to sound, to ring|ue
+almorzar|to have lunch|ue
+despertar|to wake up|ie
+comenzar|to begin|ie
+encender|to turn on|ie
+defender|to defend|ie
+devolver|to give back|ue
+resolver|to solve|ue
+convertir|to convert|ie
+divertir|to amuse|ie
+sugerir|to suggest|ie
+competir|to compete|i
+medir|to measure|i
+reír|to laugh|all=río ríes ríe reímos ríen
+sonreír|to smile|all=sonrío sonríes sonríe sonreímos sonríen
+huir|to flee|y
+incluir|to include|y
+destruir|to destroy|y
+contribuir|to contribute|y
+valer|to be worth|g
+caber|to fit|yo=quepo
+dirigir|to direct, to lead|j
+proteger|to protect|j
+escoger|to choose|j
+exigir|to demand|j
+recoger|to pick up|j
+corregir|to correct|i,j
+explicar|to explain|
+estudiar|to study|
+bailar|to dance|
+cantar|to sing|
+caminar|to walk|
+cocinar|to cook|
+limpiar|to clean|
+viajar|to travel|
+nadar|to swim|
+descansar|to rest|
+manejar|to drive, to handle|
+llorar|to cry|
+partir|to leave, to split|
+cumplir|to fulfill, to turn (an age)|
+sufrir|to suffer|
+compartir|to share|
+amar|to love|
+enseñar|to teach|
+aceptar|to accept|
+alcanzar|to reach|
+apoyar|to support|
+arreglar|to fix|
+contestar|to answer|
+cortar|to cut|
+crear|to create|
+cruzar|to cross|
+desear|to wish|
+disfrutar|to enjoy|
+evitar|to avoid|
+faltar|to be missing|
+firmar|to sign|
+funcionar|to work (a machine)|
+guardar|to keep, to put away|
+imaginar|to imagine|
+invitar|to invite|
+lavar|to wash|
+lograr|to achieve|
+mandar|to send, to order|
+mejorar|to improve|
+meter|to put in|
+parar|to stop|
+preparar|to prepare|
+prestar|to lend|
+prometer|to promise|
+quitar|to remove|
+regresar|to return|
+responder|to answer|
+robar|to steal|
+saludar|to greet|
+temer|to fear|
+tirar|to throw|
+tocar|to touch, to play (an instrument)|
+visitar|to visit|
+acordar|to agree|ue
+acostar|to put to bed|ue
+colgar|to hang|ue
+doler|to hurt|ue
+recomendar|to recommend|ie
+sentar|to seat|ie
+confiar|to trust|acc=í
+odiar|to hate|
+escapar|to escape|
+celebrar|to celebrate|
+dibujar|to draw|
+pintar|to paint|
+pelear|to fight|
+saltar|to jump|
+respirar|to breathe|
+esconder|to hide|
+reducir|to reduce|zc
+merecer|to deserve|zc
+establecer|to establish|zc
+pertenecer|to belong|zc
+obedecer|to obey|zc
+permanecer|to remain|zc`.split("\n").map(l => { const [inf, en, spec] = l.split("|"); return { inf, en, spec: spec || "" }; });
+function present(v){
+  const t = v.spec ? v.spec.split(",") : [], all = t.find(x => x.startsWith("all="));
+  if (all) return all.slice(4).split(" ");
+  const stem = v.inf.slice(0, -2), E = ENDS[v.inf.slice(-2)];
+  const sc = t.find(x => ["ie","ue","i","u"].includes(x)), acc = t.find(x => x.startsWith("acc="))?.slice(4);
+  const boot = st => {
+    if (sc) { const from = sc === "u" ? "u" : sc === "ue" ? "o" : "e", to = sc === "i" ? "i" : sc === "ie" ? "ie" : "ue", i = st.lastIndexOf(from); return st.slice(0, i) + to + st.slice(i+1); }
+    if (acc) { const i = st.lastIndexOf(acc === "ú" ? "u" : "i"); return st.slice(0, i) + acc + st.slice(i+1); }
+    return st;
+  };
+  const f = E.map((e, i) => (i === 3 ? stem : boot(stem)) + e);
+  if (t.includes("y")) { f[0] = stem+"yo"; f[1] = stem+"yes"; f[2] = stem+"ye"; f[4] = stem+"yen"; }
+  if (t.includes("g")) f[0] = stem + "go";
+  if (t.includes("zc")) f[0] = stem.slice(0, -1) + "zco";
+  if (t.includes("j")) f[0] = boot(stem).slice(0, -1) + "jo";
+  const yo = t.find(x => x.startsWith("yo=")); if (yo) f[0] = yo.slice(3);
+  return f;
+}
+/* verbs the learner has started, topped up from the most common ones */
+function conjPool(){
+  const started = VERBS.filter(v => S.words[v.inf] && !notStarted(v.inf));
+  return started.length >= 12 ? started : started.concat(VERBS.filter(v => !started.includes(v)).slice(0, 12 - started.length));
+}
+function startConj(){
+  const items = [];
+  for (const v of conjPool()) for (let p = 0; p < 5; p++) { const key = v.inf + "|" + p, r = S.conj[key] || {}; items.push({ v, p, key, score: (r.ok||0) - 2*(r.no||0) + Math.random() }); }
+  const round = items.sort((a,b) => a.score - b.score).slice(0, 10).sort(() => Math.random()-0.5);
+  let i = 0, right = 0;
+  $("#revHome").hidden = true; $("#conjView").hidden = false;
+  const box = $("#conjView");
+  const norm = x => x.trim().toLowerCase().replace(/\s+/g, " ");
+  const bare = x => norm(x).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const ask = () => {
+    if (i >= round.length) {
+      box.innerHTML = `<div class="panel stack"><h2>Done</h2><p class="muted" style="margin:0">${right} of ${round.length} right.</p><div class="row"><button class="btn primary" id="cjAgain">Another round</button><button class="btn" id="cjBack">Back</button></div></div>`;
+      $("#cjAgain").onclick = startConj; $("#cjBack").onclick = renderReviewHome; return;
+    }
+    const it = round[i], want = present(it.v)[it.p];
+    box.innerHTML = `
+      <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="cjEnd">End</button><span class="muted" style="font-size:.85rem">${i+1} of ${round.length}</span></div>
+      <div class="card" id="cjCard"><div class="dir">Present tense</div><div class="big">${esc(it.v.inf)}</div><div class="muted">${esc(it.v.en)}</div><div class="pron">${esc(PRON[it.p])} …</div></div>
+      <input type="text" id="cjIn" lang="es" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Type the form" enterkeyhint="done">
+      <div class="keys" id="cjKeys">${"áéíóúñ".split("").map(c => `<button type="button">${c}</button>`).join("")}</div>
+      <div class="row"><button class="btn primary" id="cjCheck" style="flex:1">Check</button><button class="btn" id="cjShow">Show</button></div>`;
+    const inp = $("#cjIn"); inp.focus();
+    $("#cjEnd").onclick = renderReviewHome;
+    $("#cjKeys").onclick = e => { const b = e.target.closest("button"); if (!b) return; const at = inp.selectionStart ?? inp.value.length; inp.setRangeText(b.textContent, at, inp.selectionEnd ?? at, "end"); inp.focus(); };
+    const finish = ok => {
+      const r = S.conj[it.key] || (S.conj[it.key] = { ok: 0, no: 0 }); if (ok) { r.ok++; right++; } else r.no++; r.t = Date.now(); save();
+      $("#cjCard").insertAdjacentHTML("beforeend", `<hr><div class="cres ${ok ? "ok" : "no"}">${esc(PRON[it.p].split(" ")[0])} ${esc(want)}</div>${speakBtn(want)}`);
+      speak(want);
+      inp.disabled = true; $("#cjShow").hidden = true;
+      $("#cjCheck").outerHTML = `<button class="btn primary" id="cjNext" style="flex:1">Next</button>`;
+      $("#cjNext").onclick = () => { i++; ask(); }; $("#cjNext").focus();
+    };
+    const check = () => {
+      const a = inp.value; if (!norm(a)) return;
+      if (norm(a) === want) finish(true);
+      else if (bare(a) === bare(want)) { finish(true); toast("Right, but watch the accent"); }
+      else finish(false);
+    };
+    $("#cjCheck").onclick = check; $("#cjShow").onclick = () => finish(false);
+    inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); check(); } };
+  };
+  ask();
+}
+$("#conjBtn").onclick = startConj;
 
 /* ---------- STORIES ---------- */
 let storyLen = 10, genCtl = null;
@@ -1116,11 +1455,38 @@ function renderWords(){
   const all = Object.values(S.words).sort((a,b) => keyOf(a.es).localeCompare(keyOf(b.es), "es"));
   const list = q ? all.filter(w => w.es.toLowerCase().includes(q) || w.en.toLowerCase().includes(q)) : all;
   const starter = all.filter(w => w.source === "starter").length;
-  $("#wordCount").textContent = `${all.length} words`;
+  $("#wordCount").textContent = `${all.length} in your list`;
   $("#wordList").innerHTML = list.slice(0, 300).map(w => `<button data-k="${esc(w.id)}"><span class="es">${wordFace(w)}</span>${statusPill(w.id)}<span class="en">${esc(w.en || "no meaning yet")}</span></button>`).join("") || `<p class="muted" style="padding:14px;margin:0">No matches.</p>`;
   $("#wMore").textContent = (list.length > 300 ? `Showing 300 of ${list.length}. Search to narrow it down. ` : "") + (starter ? `${starter} of these are sample starter words. Import your Duolingo list to replace them.` : "");
   if (starter && !openedImport) { $("#importBox").open = true; openedImport = true; }
-  renderVoices();
+  renderCommon(); renderVoices();
+}
+let openBatch = 0;
+function renderCommon(){
+  if (!FREQ.length) { $("#batchList").innerHTML = `<p class="muted" style="margin:0">The list didn't load. Reload to try again.</p>`; return; }
+  const st = k => { const c = S.cards[k+"|r"]; return S.skip[k] ? "skip" : !c || c.state === "new" ? "new" : c.state === "review" ? "done" : "lrn"; };
+  const rows = [];
+  for (let b = 1; b <= Math.ceil(FREQ.length / BATCH); b++) {
+    const ws = FREQ.slice((b-1)*BATCH, b*BATCH); let done = 0, lrn = 0;
+    for (const f of ws) { const x = st(keyOf(f.es)); if (x === "done") done++; else if (x === "lrn") lrn++; }
+    rows.push(`<button class="brow" data-b="${b}" aria-expanded="${b === openBatch}"><span>${(b-1)*BATCH+1}–${b*BATCH}</span><span class="bar"><i class="done" style="width:${100*done/ws.length}%"></i><i class="lrn" style="width:${100*lrn/ws.length}%"></i></span><b>${done}</b><small>about ${BANDS[b-1] || "B2"} · ${done} learned${lrn ? `, ${lrn} learning` : ""}</small></button>`);
+  }
+  $("#batchList").innerHTML = rows.join("");
+  const box = $("#batchWords"); box.hidden = !openBatch;
+  if (openBatch) box.innerHTML = FREQ.slice((openBatch-1)*BATCH, openBatch*BATCH).map(f => {
+    const k = keyOf(f.es), w = S.words[k] || f;
+    return `<button data-f="${esc(k)}"><span class="es"><span class="muted" style="font-weight:400">${f.r}.</span> ${wordFace(w)}</span>${S.skip[k] ? `<span class="pill skip">skipped</span>` : S.words[k] ? statusPill(k) : `<span class="pill">to come</span>`}<span class="en">${esc(w.en || f.en)}</span></button>`;
+  }).join("");
+}
+$("#batchList").onclick = e => { const b = e.target.closest("[data-b]"); if (!b) return; openBatch = openBatch === +b.dataset.b ? 0 : +b.dataset.b; renderCommon(); };
+$("#batchWords").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; const k = b.dataset.f; if (S.words[k]) editWord(k); else commonSheet(FREQK.get(k)); };
+function commonSheet(f){
+  const k = keyOf(f.es);
+  openSheet(`<div class="word">${wordFace(f)}</div><dl><dt>Meaning</dt><dd>${esc(f.en)}</dd><dt>Rank</dt><dd>#${f.r} of the most common words</dd></dl>
+    <div class="row"><button class="btn primary" id="cAdd">Add to my words now</button><button class="btn ghost" id="cSkip">${S.skip[k] ? "Let it come up again" : "Skip this word"}</button></div>`, root => {
+    root.querySelector("#cAdd").onclick = () => { delete S.skip[k]; addWord(f.es, f.en, f.pos, f.g, "freq"); save(); closeSheet(); renderWords(); toast("Added"); };
+    root.querySelector("#cSkip").onclick = () => { if (S.skip[k]) delete S.skip[k]; else S.skip[k] = 1; save(); closeSheet(); renderCommon(); };
+  });
 }
 $("#wSearch").oninput = renderWords;
 
@@ -1161,7 +1527,7 @@ function editWord(k){
         save(); closeSheet(); renderWords(); toast("Saved");
       };
       const del = root.querySelector("#eDel");
-      if (del) del.onclick = () => { if (del.dataset.armed) { removeWord(k); save(); closeSheet(); renderWords(); toast("Deleted"); } else { del.dataset.armed = 1; del.textContent = "Tap again to delete"; } };
+      if (del) del.onclick = () => { if (del.dataset.armed) { const ranked = !!rankOf(k); removeWord(k); if (ranked) S.skip[k] = 1; save(); closeSheet(); renderWords(); toast(ranked ? "Deleted. It won't come back from the common list." : "Deleted"); } else { del.dataset.armed = 1; del.textContent = "Tap again to delete"; } };
   });
 }
 
@@ -1436,7 +1802,7 @@ async function boot(){
   const m = location.hash.match(/login=([\w-]+)/);
   if (m) { history.replaceState(null, "", location.pathname + location.search); try { await signIn(m[1]); } catch (e) {} }
   let me;
-  try { me = await api("me"); await loadState(); }
+  try { [me] = await Promise.all([api("me"), loadState(), loadFreq()]); }
   catch (e) {
     if (e?.code === "signed_out") return;
     $("#bootMsg").textContent = "Can't reach the server right now. Check your connection and reload."; $("#bootMsg").hidden = false; return;

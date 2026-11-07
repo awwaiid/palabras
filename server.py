@@ -262,7 +262,7 @@ def state_items(S):
     for st in S.get("stories") or []:
         if isinstance(st, dict) and st.get("id"):
             out.append(("story", str(st["id"]), json.dumps(st, ensure_ascii=False)))
-    for k in ("settings", "newDay", "adv"):
+    for k in ("settings", "newDay", "adv", "conj", "skip"):
         if k in S:
             out.append(("meta", k, json.dumps(S[k], ensure_ascii=False)))
     return out
@@ -358,6 +358,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/health":
             return self.send_json({"ok": True})
+        if path == "/freq.json":
+            with open(os.path.join(HERE, "freq.json"), "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if not path.startswith("/api/"):
             return self.send_json({"error": "not_found"}, 404)
         con = db()
