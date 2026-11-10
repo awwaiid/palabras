@@ -17,6 +17,8 @@
   --accent:#6A4CB0; --accent-ink:#FFFFFF; --accent-soft:#ECE7F8;
   --good:#2C7A58; --hard:#A8641E; --bad:#B12F4A;
   --masc:#2D62B0; --fem:#B5396F;
+  --accent-2:#9A6FE0; --teal:#1F8A8A; --teal-soft:#DDF3F1; --coral:#D4553C; --coral-soft:#FBE4DE;
+  --amber:#C27A12; --amber-soft:#FBEFD6; --good-soft:#DDF2E7; --bad-soft:#F9E0E6;
   --f-read:"Literata", Georgia, "Times New Roman", serif;
   --f-ui:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --r:12px;
@@ -24,11 +26,20 @@
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --paper:#121428; --card:#1B1E3A; --ink:#E8E9F4; --muted:#9CA1C4; --line:#2D3258;
   --accent:#AE92EE; --accent-ink:#17122B; --accent-soft:#2A2452;
-  --good:#5FC89B; --hard:#E2A462; --bad:#F27B94; --masc:#86AEF2; --fem:#F28DBA; color-scheme:dark }}
+  --good:#5FC89B; --hard:#E2A462; --bad:#F27B94; --masc:#86AEF2; --fem:#F28DBA;
+  --accent-2:#C7B0F5; --teal:#5CCFC8; --teal-soft:#163A3B; --coral:#F3917A; --coral-soft:#3F2520;
+  --amber:#EBB85A; --amber-soft:#3B2E13; --good-soft:#16372A; --bad-soft:#3F1C27; color-scheme:dark }}
 :root[data-theme="dark"]{
   --paper:#121428; --card:#1B1E3A; --ink:#E8E9F4; --muted:#9CA1C4; --line:#2D3258;
   --accent:#AE92EE; --accent-ink:#17122B; --accent-soft:#2A2452;
-  --good:#5FC89B; --hard:#E2A462; --bad:#F27B94; --masc:#86AEF2; --fem:#F28DBA; color-scheme:dark }
+  --good:#5FC89B; --hard:#E2A462; --bad:#F27B94; --masc:#86AEF2; --fem:#F28DBA;
+  --accent-2:#C7B0F5; --teal:#5CCFC8; --teal-soft:#163A3B; --coral:#F3917A; --coral-soft:#3F2520;
+  --amber:#EBB85A; --amber-soft:#3B2E13; --good-soft:#16372A; --bad-soft:#3F1C27; color-scheme:dark }
+/* each section has its own hue; the header, tab and cards inside it pick it up */
+#v-review,#v-login{--sec:var(--accent);--sec-soft:var(--accent-soft)} #v-stories{--sec:var(--teal);--sec-soft:var(--teal-soft)}
+#v-adv{--sec:var(--amber);--sec-soft:var(--amber-soft)} #v-words{--sec:var(--coral);--sec-soft:var(--coral-soft)} #v-admin{--sec:var(--masc);--sec-soft:var(--accent-soft)}
+.hue-accent{--hue:var(--accent);--hue-soft:var(--accent-soft)} .hue-teal{--hue:var(--teal);--hue-soft:var(--teal-soft)} .hue-amber{--hue:var(--amber);--hue-soft:var(--amber-soft)}
+.hue-coral{--hue:var(--coral);--hue-soft:var(--coral-soft)} .hue-good{--hue:var(--good);--hue-soft:var(--good-soft)}
 html,body{height:100%}
 body{background:var(--paper);color:var(--ink);font-family:var(--f-ui);font-size:16px;line-height:1.5;-webkit-tap-highlight-color:transparent}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
@@ -36,8 +47,8 @@ button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px calc(96px + env(safe-area-inset-bottom,0px))}
-header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);display:flex;align-items:baseline;justify-content:flex-start;gap:12px;padding-block:12px 10px;border-bottom:1px solid var(--line);margin-bottom:16px}
-header.top h1{font-family:var(--f-read);font-weight:600;font-size:1.5rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);display:flex;align-items:baseline;justify-content:flex-start;gap:12px;padding-block:12px 10px;border-bottom:3px solid var(--sec,var(--line));margin-bottom:16px}
+header.top h1{font-family:var(--f-read);font-weight:600;font-size:1.5rem;margin:0;letter-spacing:-.01em;text-wrap:balance;color:var(--sec,var(--ink))}
 header.top .sub{color:var(--muted);font-size:.85rem;margin-left:auto;text-align:right}
 .fbBtn{position:fixed;z-index:9;right:max(14px,env(safe-area-inset-right,0px));bottom:calc(70px + env(safe-area-inset-bottom,0px));width:34px;height:34px;box-shadow:0 2px 8px rgba(10,12,30,.12);border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--muted);font-weight:700;font-size:1rem;line-height:1;padding:0;display:grid;place-items:center}
 .fbBtn:hover{color:var(--accent);border-color:var(--accent)}
@@ -49,7 +60,7 @@ h2{font-family:var(--f-read);font-weight:600;font-size:1.2rem;margin:0;text-wrap
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
 .btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 14px;font-weight:700}
-.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--accent-ink);border-color:transparent}
 .btn.ghost{background:transparent}
 .btn.small{padding:6px 10px;font-size:.88rem}
 .btn:disabled{opacity:.5;cursor:default}
@@ -62,18 +73,25 @@ label.field{display:flex;flex-direction:column;gap:4px;font-size:.88rem;color:va
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 nav.tabs button{background:none;border:0;padding:10px 4px 12px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--muted);font-size:.78rem;font-weight:700}
 nav.tabs button svg{width:22px;height:22px}
-nav.tabs button[aria-current="page"]{color:var(--accent)}
+nav.tabs button[data-v="review"]{--tab:var(--accent);--tab-soft:var(--accent-soft)} nav.tabs button[data-v="stories"]{--tab:var(--teal);--tab-soft:var(--teal-soft)}
+nav.tabs button[data-v="adv"]{--tab:var(--amber);--tab-soft:var(--amber-soft)} nav.tabs button[data-v="words"]{--tab:var(--coral);--tab-soft:var(--coral-soft)}
+nav.tabs button svg{padding:3px 10px;border-radius:999px}
+nav.tabs button[aria-current="page"]{color:var(--tab,var(--accent))} nav.tabs button[aria-current="page"] svg{background:var(--tab-soft,var(--accent-soft))}
 
 /* stats */
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px}
-.stat b{display:block;font-family:var(--f-read);font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat{background:var(--hue-soft,var(--card));border:1px solid var(--line);border-left:4px solid var(--hue,var(--line));border-radius:var(--r);padding:12px}
+.stat b{display:block;font-family:var(--f-read);font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--hue,var(--ink))}
 .stat span{font-size:.82rem;color:var(--muted)}
-.stat.lead{border-color:var(--accent);background:var(--accent-soft)}
+.panel.edge{border-left:4px solid var(--hue)} .panel.edge h2{color:var(--hue)}
+/* block progress */
+.blockbar{height:12px;background:var(--line);border-radius:6px;overflow:hidden;display:flex}
+.blockbar i{display:block;height:100%} .blockbar .done{background:linear-gradient(90deg,var(--accent),var(--teal))} .blockbar .lrn{background:var(--amber)}
+.blockhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px} .blockhead b{font-family:var(--f-read);font-size:1.2rem;font-variant-numeric:tabular-nums;color:var(--accent);white-space:nowrap}
 
 /* flashcard */
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px 20px;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center}
-.card .dir{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-top:5px solid var(--sec,var(--accent));border-radius:16px;padding:28px 20px;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center}
+.card .dir{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--sec,var(--accent));font-weight:700}
 .card .big{font-family:var(--f-read);font-size:2.2rem;line-height:1.2;font-weight:600;overflow-wrap:anywhere}
 .card .mid{font-size:1.25rem}
 .card hr{width:60%;border:0;border-top:1px solid var(--line);margin:4px 0}
@@ -81,7 +99,8 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 .grades{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .grades button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 2px;font-weight:700;display:flex;flex-direction:column;align-items:center;line-height:1.2}
 .grades button small{font-weight:400;color:var(--muted);font-size:.75rem;font-variant-numeric:tabular-nums}
-.grades .g0{color:var(--bad)} .grades .g1{color:var(--hard)} .grades .g2{color:var(--good)} .grades .g3{color:var(--accent)}
+.grades .g0{color:var(--bad);background:var(--bad-soft)} .grades .g1{color:var(--hard);background:var(--amber-soft)} .grades .g2{color:var(--good);background:var(--good-soft)} .grades .g3{color:var(--accent);background:var(--accent-soft)}
+.grades button{border-color:transparent}
 .iconbtn{border:1px solid var(--line);background:var(--card);border-radius:999px;width:40px;height:40px;display:inline-grid;place-items:center;padding:0}
 .iconbtn svg{width:20px;height:20px}
 .iconbtn[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
@@ -90,9 +109,9 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 
 /* reader */
 .reader{font-family:var(--f-read);font-size:1.22rem;line-height:1.85}
-.reader h2{font-size:1.6rem;margin-bottom:2px}
+.reader h2{font-size:1.6rem;margin-bottom:2px;color:var(--teal)}
 .reader p.s{margin:0 0 .35em;border-radius:6px}
-.reader p.s.playing{outline:2px solid var(--accent);outline-offset:4px}
+.reader p.s.playing{outline:2px solid var(--teal);outline-offset:4px}
 .ulist{display:flex;flex-direction:column;gap:8px}
 .urow{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
 .urow .meta{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
@@ -109,23 +128,23 @@ a.btn{text-decoration:none;color:inherit;display:inline-block}
 .vrow[aria-current="true"] .pick b::after{content:" ✓";color:var(--accent)}
 .reader .en{display:block;font-family:var(--f-ui);font-size:.9rem;line-height:1.4;color:var(--muted);margin:0 0 .9em}
 .w{background:none;border:0;padding:0 1px;margin:0 -1px;font:inherit;color:inherit;border-radius:4px;cursor:pointer}
-.w.unk{text-decoration:underline dotted var(--accent) 2px;text-underline-offset:4px}
-.w.lrn{background:var(--accent-soft)}
-.w.sel{background:var(--accent);color:var(--accent-ink)}
+.w.unk{text-decoration:underline dotted var(--coral) 2px;text-underline-offset:4px}
+.w.lrn{background:var(--teal-soft)}
+.w.sel{background:var(--teal);color:#fff}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
 .legend i{font-style:normal;padding:0 4px;border-radius:4px}
 .storylist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
 .storylist button{display:flex;justify-content:space-between;gap:12px;align-items:center;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 14px}
 .storylist button:last-child{border-bottom:0}
-.storylist .t{font-family:var(--f-read);font-weight:600;font-size:1.05rem}
+.storylist .t{font-family:var(--f-read);font-weight:600;font-size:1.05rem;color:var(--teal)}
 .storylist small{color:var(--muted);display:block}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:.9rem}
 .chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
 .choices{display:flex;flex-direction:column;gap:8px;margin-top:8px}
-.choice{text-align:left;border:1px solid var(--accent);background:var(--card);border-radius:12px;padding:12px 14px;font-family:var(--f-read);font-size:1.08rem}
+.choice{text-align:left;border:1px solid var(--amber);background:var(--card);border-radius:12px;padding:12px 14px;font-family:var(--f-read);font-size:1.08rem}
 .choice small{display:block;font-family:var(--f-ui);font-size:.82rem;color:var(--muted)}
-.chosen{font-family:var(--f-ui);font-size:.9rem;color:var(--accent);font-weight:700;margin:.2em 0 1em;padding-left:10px;border-left:3px solid var(--accent)}
+.chosen{font-family:var(--f-ui);font-size:.9rem;color:var(--amber);font-weight:700;margin:.2em 0 1em;padding-left:10px;border-left:3px solid var(--amber)}
 .progress{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.92rem}
 .spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 0.9s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -139,14 +158,14 @@ a.btn{text-decoration:none;color:inherit;display:inline-block}
 .wlist .es{font-weight:700;min-width:0;overflow-wrap:anywhere}
 .wlist .en{color:var(--muted);font-size:.9rem;grid-column:1;min-width:0;overflow-wrap:anywhere}
 .pill{grid-row:1/span 2;grid-column:2;align-self:center;font-size:.75rem;font-weight:700;border-radius:999px;padding:3px 8px;border:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
-.pill.lrn{color:var(--hard);border-color:currentColor}
-.pill.rev{color:var(--good);border-color:currentColor}
+.pill.lrn{color:var(--hard);border-color:currentColor;background:var(--amber-soft)}
+.pill.rev{color:var(--good);border-color:currentColor;background:var(--good-soft)}
 
 /* match game */
 .match{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .match button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:12px 8px;min-height:52px;font-weight:700;overflow-wrap:anywhere}
 .match button.es{font-family:var(--f-read);font-weight:600;font-size:1.05rem}
-.match button.on{border-color:var(--accent);background:var(--accent-soft)}
+.match button.on{border-color:var(--teal);background:var(--teal-soft)}
 .match button.ok{opacity:.25;border-style:dashed}
 .match button.no{border-color:var(--bad);color:var(--bad)}
 
@@ -172,12 +191,13 @@ details summary{cursor:pointer;font-weight:700}
 .brow small{color:var(--muted);font-size:.8rem;grid-column:1/-1}
 .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;display:flex}
 .bar i{display:block;height:100%}
-.bar .done{background:var(--good)} .bar .lrn{background:var(--hard)}
+.bar .done{background:linear-gradient(90deg,var(--good),var(--teal))} .bar .lrn{background:var(--amber)}
 .keys{display:flex;gap:6px;flex-wrap:wrap}
 .keys button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 0;font-family:var(--f-read);font-size:1.05rem;flex:1}
 .card .pron{font-family:var(--f-ui);font-size:1.15rem;font-weight:700;color:var(--accent);margin-top:6px}
 .cres{font-size:1.5rem;font-family:var(--f-read);font-weight:600}
 .cres.ok{color:var(--good)} .cres.no{color:var(--bad)}
+.cres{padding:4px 14px;border-radius:10px} .cres.ok{background:var(--good-soft)} .cres.no{background:var(--bad-soft)}
 .pill.skip{color:var(--muted);border-style:dashed}
 </style>
 
@@ -244,15 +264,20 @@ details summary{cursor:pointer;font-weight:700}
   <section id="v-review" hidden>
     <header class="top"><h1>Repaso</h1><span class="sub" id="revSub"></span></header>
     <div id="revHome" class="stack">
+      <div class="panel stack" id="blockPanel" style="gap:8px" hidden>
+        <div class="blockhead"><span class="eyebrow" id="blockLabel"></span><b id="blockCount"></b></div>
+        <div class="blockbar"><i class="done" id="blockDone"></i><i class="lrn" id="blockLrn"></i></div>
+        <p class="muted" id="blockEta" style="margin:0;font-size:.88rem"></p>
+      </div>
       <div class="stats" id="stats"></div>
       <button class="btn primary block" id="startBtn">Start review</button>
       <p class="muted" id="nextNote" style="margin:0"></p>
       <button class="btn block" id="moreNewBtn" hidden></button>
-      <div class="panel stack">
+      <div class="panel stack edge hue-teal">
         <div class="row" style="justify-content:space-between"><h2>Emparejar</h2><span class="muted" style="font-size:.85rem">Match pairs · doesn't affect your schedule</span></div>
         <button class="btn" id="matchBtn">Play a round</button>
       </div>
-      <div class="panel stack">
+      <div class="panel stack edge hue-amber">
         <div class="row" style="justify-content:space-between"><h2>Conjugar</h2><span class="muted" style="font-size:.85rem">Present tense · doesn't affect your schedule</span></div>
         <button class="btn" id="conjBtn">Practice 10 forms</button>
       </div>
@@ -508,7 +533,7 @@ function itemsOf(s){
 }
 const lastLogT = s => s.log.reduce((m, l) => Math.max(m, l.t), 0);
 let shadow = new Map(), logT = 0, stamp = 0, flushing = false, again = false, saveT, failNoted = false;
-function adopt(d){ S = Object.assign(fresh(), d.S); shadow = itemsOf(S); logT = lastLogT(S); stamp = d.stamp; }
+function adopt(d){ S = Object.assign(fresh(), d.S); if (!S.settings.trackSince) { S.settings.trackSince = Date.now(); save(); } shadow = itemsOf(S); logT = lastLogT(S); stamp = d.stamp; }
 async function loadState(){
   const d = await api("state");
   adopt(d);
@@ -877,15 +902,50 @@ function stats(){
   const upcoming = cards.filter(c => c.state !== "new" && c.due > now).sort((a,b) => a.due-b.due)[0];
   return { due, learning, solid, seen, learned, common, ret, avail, total: Object.keys(S.words).length, upcoming };
 }
+/* new words started per day over the last 7 days (a shorter window until 7 days of tracking exist) */
+function pace(){
+  const now = Date.now(), win = Math.min(7*DAY, Math.max(DAY, now - (S.settings.trackSince || now)));
+  const n = Object.values(S.cards).filter(c => c.d === "r" && c.first > now - win).length;
+  return { n, days: win/DAY, perDay: n / (win/DAY) };
+}
+/* the lowest 500-word block of the common list that still has words to come */
+function blockProgress(){
+  if (!FREQ.length) return null;
+  const st = k => { const c = S.cards[k+"|r"]; return S.skip[k] ? "skip" : !c || c.state === "new" ? "new" : c.state === "review" ? "done" : "lrn"; };
+  const nb = Math.ceil(FREQ.length / BATCH);
+  for (let b = 1; b <= nb; b++) {
+    const ws = FREQ.slice((b-1)*BATCH, b*BATCH), c = { done:0, lrn:0, skip:0, new:0 };
+    for (const f of ws) c[st(keyOf(f.es))]++;
+    if (c.new || b === nb) return { b, nb, size: ws.length, ...c, started: c.done + c.lrn, left: c.new, leftAll: FREQ.filter(f => st(keyOf(f.es)) === "new").length };
+  }
+}
+const fmtDate = ms => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: new Date(ms).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+function renderBlock(){
+  const p = blockProgress(); $("#blockPanel").hidden = !p; if (!p) return;
+  const r = pace();
+  $("#blockLabel").textContent = `Block ${p.b} of ${p.nb} · words ${(p.b-1)*BATCH+1}–${(p.b-1)*BATCH+p.size} · ${BANDS[p.b-1] || "B2"}`;
+  $("#blockCount").textContent = `${p.started} / ${p.size - p.skip}`;
+  $("#blockDone").style.width = `${100*p.done/p.size}%`; $("#blockLrn").style.width = `${100*p.lrn/p.size}%`;
+  let eta;
+  if (!p.left) eta = `Block ${p.b} complete${p.b < p.nb ? "." : " — that's the whole list."}`;
+  else if (!r.n) eta = `${p.left} to go. Your pace shows after your next session.`;
+  else {
+    const days = p.left / r.perDay, all = p.leftAll / r.perDay;
+    eta = `${p.left} to go · ${r.perDay.toFixed(1)} new words/day over the last ${r.days < 1.5 ? "day" : Math.round(r.days) + " days"} · about ${fmtGap(days*DAY)}, around ${fmtDate(Date.now() + days*DAY)}.`
+      + (p.leftAll > p.left ? ` All ${FREQ.length.toLocaleString()} at this pace: ${fmtDate(Date.now() + all*DAY)}.` : "");
+  }
+  $("#blockEta").textContent = eta;
+}
 function renderReviewHome(){
   $("#revSession").hidden = true; $("#matchView").hidden = true; $("#conjView").hidden = true; $("#revHome").hidden = false;
+  renderBlock();
   const s = stats();
   $("#revSub").textContent = `${s.learned} word${s.learned === 1 ? "" : "s"} learned`;
   $("#stats").innerHTML = `
-    <div class="stat lead"><b>${s.due}</b><span>due for review</span></div>
-    <div class="stat"><b>${s.avail}</b><span>new words ready today</span></div>
-    <div class="stat"><b>${s.solid}</b><span>solid (remembered 3+ weeks)</span></div>
-    <div class="stat"><b>${s.ret === null ? "—" : s.ret + "%"}</b><span>${s.ret === null ? "recall rate (after 10 reviews)" : "recalled on review, last 30 days"}</span></div>`;
+    <div class="stat hue-accent"><b>${s.due}</b><span>due for review</span></div>
+    <div class="stat hue-coral"><b>${s.avail}</b><span>new words ready today</span></div>
+    <div class="stat hue-good"><b>${s.solid}</b><span>solid (remembered 3+ weeks)</span></div>
+    <div class="stat hue-teal"><b>${s.ret === null ? "—" : s.ret + "%"}</b><span>${s.ret === null ? "recall rate (after 10 reviews)" : "recalled on review, last 30 days"}</span></div>`;
   const any = s.due + s.avail > 0 || !!pickNext();
   $("#startBtn").disabled = !any;
   $("#startBtn").textContent = any ? (s.due ? `Review ${s.due} card${s.due === 1 ? "" : "s"}${s.avail ? ` + ${s.avail} new word${s.avail === 1 ? "" : "s"}` : ""}` : `Learn ${s.avail} new word${s.avail === 1 ? "" : "s"}`) : "Nothing due";
@@ -952,6 +1012,8 @@ function answer(g){
   const wasNew = cur.state === "new", wasRev = cur.state === "review";
   const n = sched(cur, g);
   if (n.state === "review" && n.ivl > 2 && g > 0) { const f = 1 + (Math.random()*0.1 - 0.05); n.ivl = Math.round(n.ivl * f); n.due = Date.now() + n.ivl*DAY; }
+  if (wasNew) n.first = Date.now();                      // when this card was first studied
+  if (n.state === "review" && !cur.grad) n.grad = Date.now();   // when it first graduated to spaced review
   S.cards[cur.id] = n;
   if (wasNew && cur.d === "r") { newLeft(); S.newDay.n++; }   // the cap counts words; the English → Spanish card follows for free
   S.log.push({ t: Date.now(), g, rev: wasRev }); if (S.log.length > 3000) S.log.splice(0, S.log.length - 3000);
