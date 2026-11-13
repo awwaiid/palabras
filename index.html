@@ -94,6 +94,7 @@ nav.tabs button[aria-current="page"]{color:var(--tab,var(--accent))} nav.tabs bu
 .card .dir{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--sec,var(--accent));font-weight:700}
 .card .big{font-family:var(--f-read);font-size:2.2rem;line-height:1.2;font-weight:600;overflow-wrap:anywhere}
 .card .mid{font-size:1.25rem}
+.card button.big.tap{background:none;border:0;padding:0;color:inherit;cursor:pointer;border-bottom:1px dotted var(--muted)}
 .card hr{width:60%;border:0;border-top:1px solid var(--line);margin:4px 0}
 .g-m{color:var(--masc)} .g-f{color:var(--fem)}
 .grades{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -212,6 +213,7 @@ details summary{cursor:pointer;font-weight:700}
   <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></symbol>
   <symbol id="i-turtle" viewBox="0.8 5.2 22.4 14.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 15.5c0-4.2 3.1-7.5 7.5-7.5s7.5 3.3 7.5 7.5z"/><path d="M6.8 15.5c.5-2.4 2-3.8 3.7-3.8s3.2 1.4 3.7 3.8"/><path d="M18 14.5c.4-1.6 1.3-2.5 2.6-2.5a1.4 1.4 0 0 1 0 2.8H18"/><path d="M6 15.5v2.5M15 15.5v2.5"/></symbol>
   <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9l5 6M21 9l-5 6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
   <symbol id="i-speak" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
 </svg>
 
@@ -861,6 +863,33 @@ function wordSheet(w, sentence){
       });
   });
 }
+/* the same sheet from a flashcard: the learner's own word, plus Claude's notes on it (cached on the word) */
+function cardSheet(w){
+  openSheet(`
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div class="word">${wordFace(w)}</div>${speakBtn(w.es)}</div>
+    <dl>
+      <dt>Meaning</dt><dd>${esc(w.en || "—")}</dd>
+      <dt>Grammar</dt><dd>${esc(posLine(w) || "—")}</dd>
+      ${w.note ? `<dt>Your note</dt><dd>${esc(w.note)}</dd>` : ""}
+    </dl>
+    ${AI ? `<div class="row" style="justify-content:space-between"><span class="eyebrow" style="margin:0">About this word</span><button class="btn ghost small" id="infoAgain" hidden>Write it again</button></div>
+    <div id="infoOut" class="muted" style="font-size:.95rem;white-space:pre-wrap"></div>` : ""}`, root => {
+      if (!AI) return;
+      const out = root.querySelector("#infoOut"), again = root.querySelector("#infoAgain");
+      const run = async () => {
+        again.hidden = true; out.textContent = "Thinking…";
+        sheetCtl = new AbortController();
+        try {
+          const { text } = await AI(`A learner of Latin American Spanish is studying the flashcard "${w.es}" (${w.en}${posLine(w) ? ", " + posLine(w) : ""}) and finds it hard to remember. Help them, in plain English with short labelled paragraphs (no markdown, no bullets): 1. Meaning and nuance: what it means and how it differs from near-synonyms. 2. Etymology: where the word comes from and any English cognate or memory hook. 3. Examples: three short everyday sentences in Spanish, each followed by its English translation on the next line. 4. Related: two or three related words or common phrases built on it, with meanings. Keep it under 180 words.`,
+            { signal: sheetCtl.signal, onText: ({ text }) => { out.textContent = text; } });
+          w.info = text; save();
+        } catch (e) { if (e.code !== "cancelled") out.textContent = errCopy(e); }
+        again.hidden = false;
+      };
+      again.onclick = run;
+      if (w.info) { out.textContent = w.info; again.hidden = false; } else run();
+  });
+}
 function bindReader(host, sents){
   host.addEventListener("click", e => {
     const b = e.target.closest(".w"); if (!b) return;
@@ -987,7 +1016,7 @@ function startSession(){
   }
   const w = S.words[cur.w], rec = cur.d === "r";
   const front = rec
-    ? `<div class="dir">What does it mean?</div><div class="big">${wordFace(w)}</div>${speakBtn(w.es)}`
+    ? `<div class="dir">What does it mean?</div><button class="big tap" data-about aria-label="About this word">${wordFace(w)}</button>${speakBtn(w.es)}`
     : `<div class="dir">Say it in Spanish</div><div class="big" style="font-family:var(--f-ui)">${esc(w.en)}</div><div class="muted">${esc(posLine(w))}</div>`;
   const isNew = cur.state === "new";
   box.innerHTML = `
@@ -996,13 +1025,14 @@ function startSession(){
     <button class="btn primary block" id="showBtn">Show answer</button>`;
   $("#endBtn").onclick = renderReviewHome;
   $("#showBtn").onclick = () => reveal(w, rec);
+  $("#theCard").onclick = e => { if (e.target.closest("[data-about]")) cardSheet(w); };
 }
 function reveal(w, rec){
   const card = $("#theCard");
   card.innerHTML += `<hr>` + (rec
     ? `<div class="mid">${esc(w.en || "—")}</div><div class="muted">${esc(posLine(w))}</div>`
-    : `<div class="big">${wordFace(w)}</div>${speakBtn(w.es)}`) +
-    `<label class="note field">Your connection<textarea id="noteBox" placeholder="A memory, image, or person this word brings to mind">${esc(w.note)}</textarea></label>`;
+    : `<button class="big tap" data-about aria-label="About this word">${wordFace(w)}</button>${speakBtn(w.es)}`) +
+    `<button class="btn ghost small" data-about>About this word ›</button><label class="note field">Your connection<textarea id="noteBox" placeholder="A memory, image, or person this word brings to mind">${esc(w.note)}</textarea></label>`;
   $("#noteBox").oninput = e => { w.note = e.target.value; save(); };
   const btns = ["Again","Hard","Good","Easy"].map((l, g) => `<button class="g${g}" data-g="${g}">${l}<small>${fmtGap(sched(cur, g).due - Date.now())}</small></button>`).join("");
   $("#showBtn").outerHTML = `<div class="grades" id="grades">${btns}</div>`;
@@ -1347,7 +1377,7 @@ function openStory(id){
   $("#storyHome").hidden = true; const box = $("#storyRead"); box.hidden = false;
   box.innerHTML = `
     <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="sBack">‹ Stories</button>
-      <span class="row"><button class="btn small" id="sEn" aria-pressed="false">Show English</button><span class="speakpair"><button class="iconbtn" id="sPlay" aria-label="Listen"><svg><use href="#i-play"/></svg></button><button class="iconbtn" id="sSlow" aria-label="Listen slowly"><svg><use href="#i-turtle"/></svg></button></span></span></div>
+      <span class="row"><button class="btn small" id="sEn" aria-pressed="false">Show English</button>${st.builtin ? "" : `<button class="iconbtn" id="sDelTop" aria-label="Delete story"><svg><use href="#i-trash"/></svg></button>`}<span class="speakpair"><button class="iconbtn" id="sPlay" aria-label="Listen"><svg><use href="#i-play"/></svg></button><button class="iconbtn" id="sSlow" aria-label="Listen slowly"><svg><use href="#i-turtle"/></svg></button></span></span></div>
     <article class="reader"><h2>${esc(st.title)}</h2><div class="muted" style="font-family:var(--f-ui);font-size:.9rem;margin-bottom:12px">${esc(st.titleEn||"")}</div><div id="sBody"></div></article>
     <div class="legend"><span><i class="w unk" style="padding:0">dotted</i> new to you</span><span><i style="background:var(--accent-soft)">shaded</i> still learning</span><span>Tap any word</span></div>
     ${st.builtin ? "" : `<button class="btn ghost small" id="sDel" style="align-self:flex-start;color:var(--bad)">Delete story</button>`}`;
@@ -1370,11 +1400,12 @@ function openStory(id){
   playBtn.onclick = () => listen();
   slowBtn.onclick = () => listen(SLOWEST);
   $("#sEn").onclick = e => { showEn = !showEn; e.target.textContent = showEn ? "Hide English" : "Show English"; body.querySelectorAll(".en").forEach(x => x.hidden = !showEn); };
-  const del = $("#sDel");
+  const del = $("#sDel"), delTop = $("#sDelTop");
   if (del) del.onclick = () => {
     if (del.dataset.armed) { S.stories = S.stories.filter(s => s.id !== id); save(); renderStoryHome(); toast("Story deleted"); }
     else { del.dataset.armed = 1; del.textContent = "Tap again to delete"; }
   };
+  if (delTop) delTop.onclick = () => { del.scrollIntoView({ block: "center", behavior: "smooth" }); del.click(); };
   window.scrollTo(0, 0);
 }
 $("#genBtn").onclick = async () => {
@@ -1439,7 +1470,7 @@ function renderAdv(){
     return;
   }
   const a = S.adv;
-  box.innerHTML = `<div class="row" style="justify-content:space-between"><span class="muted" style="font-size:.88rem">${esc(a.title || "")}</span><span class="row"><button class="btn small" id="aEn">Show English</button><button class="btn small ghost" id="aNew">New adventure</button></span></div><article class="reader" id="aBody"></article><div id="advStatus"></div>`;
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><span class="muted" style="font-size:.88rem">${esc(a.title || "")}</span><span class="row"><button class="btn small" id="aEn">Show English</button><button class="btn small ghost" id="aNew">New adventure</button><button class="iconbtn" id="aDel" aria-label="Delete adventure"><svg><use href="#i-trash"/></svg></button></span></div><article class="reader" id="aBody"></article><div id="advStatus"></div>`;
   const body = $("#aBody");
   if (a.title) body.insertAdjacentHTML("beforeend", `<h2>${esc(a.title)}</h2><div style="height:8px"></div>`);
   a.steps.forEach((s, idx) => {
@@ -1460,6 +1491,7 @@ function renderAdv(){
   $("#aEn").onclick = () => { a.showEn = !a.showEn; save(); renderAdv(); };
   const nb = $("#aNew");
   nb.onclick = () => { if (nb.dataset.armed) { advCtl?.abort(); S.adv = null; save(); renderAdv(); } else { nb.dataset.armed = 1; nb.textContent = "Tap again to end"; } };
+  $("#aDel").onclick = () => { if (nb.dataset.armed) { advCtl?.abort(); S.adv = null; save(); renderAdv(); toast("Adventure deleted"); } else { nb.dataset.armed = 1; nb.textContent = "Tap again to delete"; } };
 }
 async function advStep(choice){
   const a = S.adv; if (!a || !AI) return;
