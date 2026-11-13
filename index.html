@@ -40,7 +40,7 @@
 #v-adv{--sec:var(--amber);--sec-soft:var(--amber-soft)} #v-words{--sec:var(--coral);--sec-soft:var(--coral-soft)} #v-admin{--sec:var(--masc);--sec-soft:var(--accent-soft)}
 .hue-accent{--hue:var(--accent);--hue-soft:var(--accent-soft)} .hue-teal{--hue:var(--teal);--hue-soft:var(--teal-soft)} .hue-amber{--hue:var(--amber);--hue-soft:var(--amber-soft)}
 .hue-coral{--hue:var(--coral);--hue-soft:var(--coral-soft)} .hue-good{--hue:var(--good);--hue-soft:var(--good-soft)}
-html,body{height:100%}
+html,body{height:100%;overscroll-behavior-y:none}
 body{background:var(--paper);color:var(--ink);font-family:var(--f-ui);font-size:16px;line-height:1.5;-webkit-tap-highlight-color:transparent}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -172,9 +172,13 @@ a.btn{text-decoration:none;color:inherit;display:inline-block}
 
 /* sheet */
 .scrim{position:fixed;inset:0;background:rgba(10,12,30,.45);z-index:20}
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--card);border-top:1px solid var(--line);border-radius:18px 18px 0 0;max-height:85vh;overflow:auto;padding-top:14px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--card);border-top:1px solid var(--line);border-radius:18px 18px 0 0;max-height:85vh;overflow:auto;overscroll-behavior:contain;padding-top:14px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
 .sheet .inner{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 4px}
+.sheet.drag{transition:none}.sheet{transition:transform .18s ease-out}
+.sheet .top{position:sticky;top:-14px;z-index:2;background:var(--card);margin:-14px 0 0;padding:10px 0 2px;display:flex;align-items:center;justify-content:center;min-height:40px}
+.sheet .top .grab{margin:0}
+.sheet .x{position:absolute;right:0;top:6px;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--muted);font-size:1.3rem;line-height:1;display:grid;place-items:center}
 .sheet .word{font-family:var(--f-read);font-size:1.9rem;font-weight:600;line-height:1.2}
 .sheet dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0}
 .sheet dt{color:var(--muted);font-size:.85rem;font-weight:700;padding-top:2px}
@@ -678,10 +682,35 @@ function pickNext(){
 /* ---------- toast / sheet ---------- */
 let toastT;
 function toast(msg){ const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
-function openSheet(html, onMount){ $("#sheetInner").innerHTML = '<div class="grab"></div>' + html; $("#sheet").hidden = false; $("#scrim").hidden = false; onMount && onMount($("#sheetInner")); }
-function closeSheet(){ $("#sheet").hidden = true; $("#scrim").hidden = true; document.querySelectorAll(".w.sel").forEach(e => e.classList.remove("sel")); sheetCtl?.abort(); }
+let sheetHist = false;
+function openSheet(html, onMount){
+  const sh = $("#sheet"); sh.scrollTop = 0; sh.style.transform = "";
+  $("#sheetInner").innerHTML = '<div class="top"><div class="grab"></div><button class="x" id="sheetX" aria-label="Close">×</button></div>' + html;
+  sh.hidden = false; $("#scrim").hidden = false;
+  $("#sheetX").onclick = closeSheet;
+  if (!sheetHist) { sheetHist = true; history.pushState({ sheet: 1 }, ""); }
+  onMount && onMount($("#sheetInner"));
+}
+function closeSheet(){
+  $("#sheet").hidden = true; $("#scrim").hidden = true; document.querySelectorAll(".w.sel").forEach(e => e.classList.remove("sel")); sheetCtl?.abort();
+  if (sheetHist) { sheetHist = false; history.back(); }
+}
 $("#scrim").onclick = closeSheet;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+window.addEventListener("popstate", () => { if (!$("#sheet").hidden) { sheetHist = false; closeSheet(); } });
+/* drag the sheet down (from its top) to dismiss; the sheet's own scroll still works */
+{
+  const sh = $("#sheet"); let y0 = null, dy = 0;
+  sh.addEventListener("touchstart", e => { y0 = sh.scrollTop <= 0 ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+  sh.addEventListener("touchmove", e => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0) { if (sh.classList.contains("drag")) { sh.classList.remove("drag"); sh.style.transform = ""; } return; }
+    sh.classList.add("drag"); sh.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  const end = () => { if (y0 == null) return; sh.classList.remove("drag"); y0 = null; if (dy > 90) closeSheet(); else sh.style.transform = ""; dy = 0; };
+  sh.addEventListener("touchend", end); sh.addEventListener("touchcancel", end);
+}
 
 /* ---------- speech ---------- */
 let esVoice = null;
