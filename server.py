@@ -316,7 +316,7 @@ def review_prompt(words):
     return f"""You are checking a Spanish learner's flashcards for mistakes. Each line is one card: number, Spanish headword (nouns carry el/la), English meaning, part of speech, gender (m/f or -).
 Target variety: Latin American Spanish (Mexican/Colombian register).
 
-Flag a card only when something is actually wrong: the English meaning is not a meaning of the Spanish word at all, or is a rare sense while the everyday sense is missing; the Spanish is misspelled or missing an accent; the article or gender is wrong; the part of speech is wrong; or the word is Spain-only when Latin America uses another word (say so, keep the word). Do not flag cards that are merely terse, that use one of several fine translations, or that lack an article on a non-noun.
+Flag a card only when something is actually wrong: the English meaning is not a meaning of the Spanish word at all, or is a rare sense while the everyday sense is missing; the Spanish is misspelled or missing an accent; the article or gender is wrong; or the word is Spain-only when Latin America uses another word (say so, keep the word). Do not flag cards that are merely terse, that use one of several fine translations, that lack an article on a non-noun, or whose only issue is the part of speech label (fix pos quietly when flagging for another reason). Never list a card you would describe as fine or acceptable.
 
 Return a JSON array only, no prose, with one object per flagged card and nothing for the others:
 [{{"n": line number, "problem": one short sentence saying what is wrong, "es": corrected Spanish headword with el/la for nouns, "en": corrected English meaning (short, comma-separated senses), "pos": one of noun, verb, adjective, adverb, phrase, pronoun, preposition, conjunction, other, "g": "m", "f" or "", "sure": true if the current card is plainly wrong, false if it is debatable}}]
@@ -340,6 +340,9 @@ def parse_review(text, words):
             w = words[int(it.get("n")) - 1]
         except (TypeError, ValueError, IndexError):
             continue
+        fix_es, fix_en = str(it.get("es") or w.get("es") or "").strip(), str(it.get("en") or w.get("en") or "").strip()
+        if fix_es == (w.get("es") or "").strip() and fix_en == (w.get("en") or "").strip() and (it.get("g") in (None, w.get("g") or "")):
+            continue   # nothing to apply
         out.append({"id": w.get("id") or w.get("es"), "was": {k: w.get(k, "") for k in REVIEW_FIELDS},
                     "problem": str(it.get("problem") or "")[:300], "sure": bool(it.get("sure", True)),
                     "fix": {"es": str(it.get("es") or w.get("es") or "")[:80], "en": str(it.get("en") or w.get("en") or "")[:120],

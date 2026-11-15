@@ -1782,6 +1782,7 @@ async function reviewBatch(batch, signal){
   const arr = parseLoose((await readStream(r, { signal })).text);
   return (Array.isArray(arr) ? arr : []).map(it => {
     const w = batch[+it?.n - 1]; if (!w) return null;
+    if (String(it.es || w.es).trim() === w.es.trim() && String(it.en || w.en).trim() === w.en.trim() && (it.g == null || it.g === (w.g || ""))) return null;
     return { id: w.id, was: { es: w.es, en: w.en, pos: w.pos, g: w.g }, problem: String(it.problem || ""), sure: it.sure !== false,
       fix: { es: String(it.es || w.es), en: String(it.en || w.en), pos: String(it.pos || w.pos || ""), g: ["m", "f", ""].includes(it.g) ? it.g : (w.g || "") } };
   }).filter(Boolean);
