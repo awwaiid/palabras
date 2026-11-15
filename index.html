@@ -107,6 +107,18 @@ nav.tabs button[aria-current="page"]{color:var(--tab,var(--accent))} nav.tabs bu
 .iconbtn[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .note{width:100%;text-align:left}
 .note textarea{min-height:64px;font-size:.92rem}
+.wimg{max-height:150px;max-width:100%;border-radius:10px;object-fit:contain}
+.card .hint{font-size:.95rem;color:var(--muted);font-family:var(--f-read);max-width:34ch}
+.imgpick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.imgpick button{padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:var(--bg);aspect-ratio:1}
+.imgpick button img{width:100%;height:100%;object-fit:cover;display:block}
+.imgpick button[aria-pressed="true"]{border-color:var(--accent)}
+.qa{border-left:3px solid var(--line);padding:2px 0 2px 10px;font-size:.95rem}
+.qa b{display:block;margin-bottom:2px}
+.crow{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px;font-size:.95rem}
+.crow:last-child{border-bottom:0}
+.crow .was{color:var(--muted);text-decoration:line-through}
+.crow .fix{font-weight:700}
 
 /* reader */
 .reader{font-family:var(--f-read);font-size:1.22rem;line-height:1.85}
@@ -370,6 +382,14 @@ details summary{cursor:pointer;font-weight:700}
           <p class="muted" id="wMore" style="margin:0;font-size:.88rem"></p>
         </div>
       </details>
+      <details class="panel" id="checkBox">
+        <summary>Card check</summary>
+        <div class="stack" style="margin-top:12px">
+          <p class="muted" style="margin:0;font-size:.92rem">Claude reads every card and lists the ones that look wrong: a meaning that isn't right, a missing accent, a wrong article. Nothing changes until you tap Apply.</p>
+          <div class="row"><button class="btn primary" id="checkBtn">Check all my cards</button><span class="muted" id="checkStatus" style="font-size:.88rem"></span></div>
+          <div class="wlist" id="checkList" hidden></div>
+        </div>
+      </details>
       <details class="panel" id="voiceBox">
         <summary>Voice</summary>
         <div class="stack" style="margin-top:12px">
@@ -518,7 +538,7 @@ function parseAnnotated(src){
 
 /* ---------- state ---------- */
 function fresh(){
-  return { words:{}, cards:{}, log:[], newDay:{date:"",n:0}, settings:{newPerDay:10, production:true, newOrder:"freq"}, stories:[], adv:null, conj:{}, skip:{} };
+  return { words:{}, cards:{}, log:[], newDay:{date:"",n:0}, settings:{newPerDay:10, production:true, newOrder:"freq"}, stories:[], adv:null, conj:{}, skip:{}, review:null };
 }
 let S;
 
@@ -534,7 +554,7 @@ function itemsOf(s){
   for (const [k, w] of Object.entries(s.words)) m.set("word\t" + k, JSON.stringify(w));
   for (const [k, c] of Object.entries(s.cards)) m.set("card\t" + k, JSON.stringify(c));
   for (const st of s.stories) m.set("story\t" + st.id, JSON.stringify(st));
-  for (const k of ["settings", "newDay", "adv", "conj", "skip"]) m.set("meta\t" + k, JSON.stringify(s[k] ?? null));
+  for (const k of ["settings", "newDay", "adv", "conj", "skip", "review"]) m.set("meta\t" + k, JSON.stringify(s[k] ?? null));
   return m;
 }
 const lastLogT = s => s.log.reduce((m, l) => Math.max(m, l.t), 0);
@@ -597,6 +617,26 @@ function ensureCards(k){
   if (!S.cards[k+"|p"]) S.cards[k+"|p"] = { id:k+"|p", w:k, d:"p", state:"new", due:0, ivl:0, ease:2.5, step:0, reps:0, lapses:0 };
 }
 function removeWord(k){ delete S.words[k]; delete S.cards[k+"|r"]; delete S.cards[k+"|p"]; }
+/* change a word's fields; a changed headword moves its cards along so review history survives. Returns the word's key. */
+function updateWord(k, p){
+  const w = S.words[k]; if (!w) return k;
+  const es = String(p.es ?? w.es).trim() || w.es, nk = keyOf(es) || k;
+  const g = p.g !== undefined ? p.g : (/^(el|un)\s/i.test(es) ? "m" : /^(la|una)\s/i.test(es) ? "f" : w.g);
+  const en = String(p.en ?? w.en).trim();
+  if (en !== w.en || es !== w.es) { delete w.info; delete w.qa; }   // the write-up was about the old card
+  Object.assign(w, { es, g, en, pos: p.pos ?? w.pos, note: p.note ?? w.note, hint: String(p.hint ?? w.hint ?? "").trim(), img: String(p.img ?? w.img ?? "").trim() });
+  if (!w.hint) delete w.hint; if (!w.img) delete w.img;
+  if (nk === k) return k;
+  if (S.words[nk]) {   // another word already has that headword: fold into it
+    const o = S.words[nk]; for (const f of ["en", "pos", "g", "note", "hint", "img"]) if (w[f] && !o[f]) o[f] = w[f];
+    removeWord(k); return nk;
+  }
+  delete S.words[k]; w.id = nk; S.words[nk] = w;
+  for (const d of ["r", "p"]) { const c = S.cards[k+"|"+d]; delete S.cards[k+"|"+d]; if (c) { c.id = nk+"|"+d; c.w = nk; S.cards[c.id] = c; } }
+  ensureCards(nk);
+  if (cur && cur.w === k) cur = S.cards[nk+"|"+cur.d];
+  return nk;
+}
 function seedStarter(){
   STARTER.split("\n").forEach(l => { const [es,en,pos,g] = l.split("|"); addWord(es,en,pos,(g||"").trim(),"starter"); });
 }
@@ -758,28 +798,32 @@ function serverAI(){
     let r;
     try { r = await fetch("api/ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt, tier: opts.modelTier === "quick" ? "quick" : "default" }), signal: opts.signal }); }
     catch (e) { throw { code: e?.name === "AbortError" ? "cancelled" : "upstream_error" }; }
-    if (!r.ok) throw { code: r.status === 401 ? "not_granted" : r.status === 429 ? "rate_limited" : "upstream_error" };
-    const rd = r.body.getReader(), dec = new TextDecoder();
-    let buf = "", text = "", done = false;
-    try {
-      for (;;) {
-        const { done: end, value } = await rd.read(); if (end) break;
-        buf += dec.decode(value, { stream: true });
-        let i;
-        while ((i = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, i); buf = buf.slice(i + 1); if (!line) continue;
-          const ev = JSON.parse(line);
-          if (ev.error) throw { code: ev.error };
-          if (ev.done) done = true;
-          if (ev.t) { text += ev.t; opts.onText?.({ text, delta: ev.t }); }
-        }
-      }
-    } catch (e) { if (e?.code) throw e; throw { code: opts.signal?.aborted ? "cancelled" : "upstream_error" }; }
-    if (!done) throw { code: opts.signal?.aborted ? "cancelled" : "upstream_error" };
-    return { text };
+    return readStream(r, opts);
   }
   call.json = async (prompt, opts) => parseLoose((await call(prompt, opts)).text);
   return call;
+}
+/* the server's JSON-lines stream: {"t": text}… then {"done"} or {"error"} */
+async function readStream(r, opts = {}){
+  if (!r.ok) throw { code: r.status === 401 ? "not_granted" : r.status === 429 ? "rate_limited" : "upstream_error" };
+  const rd = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", text = "", done = false;
+  try {
+    for (;;) {
+      const { done: end, value } = await rd.read(); if (end) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1); if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.error) throw { code: ev.error };
+        if (ev.done) done = true;
+        if (ev.t) { text += ev.t; opts.onText?.({ text, delta: ev.t }); }
+      }
+    }
+  } catch (e) { if (e?.code) throw e; throw { code: opts.signal?.aborted ? "cancelled" : "upstream_error" }; }
+  if (!done) throw { code: opts.signal?.aborted ? "cancelled" : "upstream_error" };
+  return { text };
 }
 function parseLoose(text){
   const tries = [text, (text.match(/```(?:json)?\s*([\s\S]*?)```/) || [])[1]];
@@ -892,24 +936,33 @@ function wordSheet(w, sentence){
       });
   });
 }
-/* the same sheet from a flashcard: the learner's own word, plus Claude's notes on it (cached on the word) */
+/* the same sheet from a flashcard: the learner's own word, Claude's notes on it (cached on the word), follow-up questions, and a way to fix the card */
 function cardSheet(w){
+  const k = w.id;
   openSheet(`
     <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div class="word">${wordFace(w)}</div>${speakBtn(w.es)}</div>
+    ${wordImg(w)}
     <dl>
       <dt>Meaning</dt><dd>${esc(w.en || "—")}</dd>
       <dt>Grammar</dt><dd>${esc(posLine(w) || "—")}</dd>
+      ${w.hint ? `<dt>On the card</dt><dd>${esc(w.hint)}</dd>` : ""}
       ${w.note ? `<dt>Your note</dt><dd>${esc(w.note)}</dd>` : ""}
     </dl>
+    <div class="row"><button class="btn small" id="editW">Edit card</button>${AI ? `<button class="btn small" id="fixW">Update card with Claude</button>` : ""}</div>
+    <div id="fixOut" class="muted" style="font-size:.9rem"></div>
     ${AI ? `<div class="row" style="justify-content:space-between"><span class="eyebrow" style="margin:0">About this word</span><button class="btn ghost small" id="infoAgain" hidden>Write it again</button></div>
-    <div id="infoOut" class="muted" style="font-size:.95rem;white-space:pre-wrap"></div>` : ""}`, root => {
+    <div id="infoOut" class="muted" style="font-size:.95rem;white-space:pre-wrap"></div>
+    <div id="qaOut" class="stack"></div>
+    <form class="row" id="qaForm" style="flex-wrap:nowrap"><input type="text" id="qaIn" placeholder="Ask a follow-up about this word" autocomplete="off" style="flex:1;min-width:0"><button class="btn" type="submit" id="qaBtn">Ask</button></form>` : ""}`, root => {
+      root.querySelector("#editW").onclick = () => editWord(k);
       if (!AI) return;
-      const out = root.querySelector("#infoOut"), again = root.querySelector("#infoAgain");
+      const out = root.querySelector("#infoOut"), again = root.querySelector("#infoAgain"), qaOut = root.querySelector("#qaOut"), qaIn = root.querySelector("#qaIn"), qaBtn = root.querySelector("#qaBtn");
+      const card = () => `"${w.es}" (${w.en}${posLine(w) ? ", " + posLine(w) : ""})`;
       const run = async () => {
         again.hidden = true; out.textContent = "Thinking…";
         sheetCtl = new AbortController();
         try {
-          const { text } = await AI(`A learner of Latin American Spanish is studying the flashcard "${w.es}" (${w.en}${posLine(w) ? ", " + posLine(w) : ""}) and finds it hard to remember. Help them, in plain English with short labelled paragraphs (no markdown, no bullets): 1. Meaning and nuance: what it means and how it differs from near-synonyms. 2. Etymology: where the word comes from and any English cognate or memory hook. 3. Examples: three short everyday sentences in Spanish, each followed by its English translation on the next line. 4. Related: two or three related words or common phrases built on it, with meanings. Keep it under 180 words.`,
+          const { text } = await AI(`A learner of Latin American Spanish is studying the flashcard ${card()} and finds it hard to remember. Help them, in plain English with short labelled paragraphs (no markdown, no bullets): 1. Meaning and nuance: what it means and how it differs from near-synonyms. 2. Etymology: where the word comes from and any English cognate or memory hook. 3. Examples: three short everyday sentences in Spanish, each followed by its English translation on the next line. 4. Related: two or three related words or common phrases built on it, with meanings. Keep it under 180 words. If the card's meaning, article or spelling is wrong, say so in one sentence first.`,
             { signal: sheetCtl.signal, onText: ({ text }) => { out.textContent = text; } });
           w.info = text; save();
         } catch (e) { if (e.code !== "cancelled") out.textContent = errCopy(e); }
@@ -917,6 +970,30 @@ function cardSheet(w){
       };
       again.onclick = run;
       if (w.info) { out.textContent = w.info; again.hidden = false; } else run();
+      const qaBlock = (q, a) => { const d = document.createElement("div"); d.className = "qa"; d.innerHTML = `<b></b><div class="muted" style="white-space:pre-wrap"></div>`; d.firstChild.textContent = q; d.lastChild.textContent = a; qaOut.append(d); return d.lastChild; };
+      (w.qa || []).forEach(x => qaBlock(x.q, x.a));
+      const history = () => (w.qa || []).map(x => `Q: ${x.q}\nA: ${x.a}`).join("\n\n");
+      root.querySelector("#qaForm").onsubmit = async ev => {
+        ev.preventDefault(); const q = qaIn.value.trim(); if (!q) return;
+        qaIn.value = ""; qaBtn.disabled = true; const a = qaBlock(q, "Thinking…");
+        sheetCtl = new AbortController();
+        try {
+          const { text } = await AI(`A learner of Latin American Spanish is studying the flashcard ${card()}.${w.info ? `\n\nNotes they already have on the word:\n${w.info}` : ""}${w.qa?.length ? `\n\nEarlier questions and answers:\n${history()}` : ""}\n\nThe learner now asks: "${q}"\n\nAnswer in plain English, under 120 words, no markdown. If the flashcard itself is wrong, say what it should be. ${LATAM}`,
+            { signal: sheetCtl.signal, onText: ({ text }) => { a.textContent = text; } });
+          w.qa = (w.qa || []).concat({ q, a: text }).slice(-6); save();
+        } catch (e) { if (e.code !== "cancelled") a.textContent = errCopy(e); }
+        qaBtn.disabled = false;
+      };
+      root.querySelector("#fixW").onclick = async ev => {
+        ev.target.disabled = true; const fo = root.querySelector("#fixOut"); fo.textContent = "Checking the card…";
+        sheetCtl = new AbortController();
+        try {
+          const p = await AI.json(`A learner of Latin American Spanish has this flashcard: ${card()}.${w.info ? `\n\nNotes about the word:\n${w.info}` : ""}${w.qa?.length ? `\n\nTheir questions about it:\n${history()}` : ""}\n\nReturn the card as it should be, as JSON only: {"es": the Spanish headword with el/la for nouns, "en": short English meaning (comma-separated senses, most common first), "pos": one of noun, verb, adjective, adverb, phrase, pronoun, preposition, conjunction, other, "g": "m", "f" or "", "hint": one short Spanish phrase or sentence using the word with its English in parentheses, under 12 words, to show on the card as a memory aid, "changed": true if es, en, pos or g differ from the current card, "why": one short sentence on what was wrong, or ""}. ${LATAM}`,
+            { signal: sheetCtl.signal });
+          if (!p || typeof p !== "object") throw { code: "invalid_json" };
+          editWord(k, { es: p.es, en: p.en, pos: p.pos, g: p.g, hint: p.hint }, p.changed && p.why ? `Claude suggests: ${p.why} Edit anything before saving.` : "Claude thinks the card is right and added a hint. Edit anything before saving.");
+        } catch (e) { if (e.code !== "cancelled") { fo.textContent = errCopy(e); ev.target.disabled = false; } }
+      };
   });
 }
 function bindReader(host, sents){
@@ -1032,8 +1109,14 @@ function posLine(w){
   const g = w.g === "m" ? "masculine " : w.g === "f" ? "feminine " : "";
   return (g + (w.pos || "")).trim();
 }
+const wordImg = w => w.img ? `<img class="wimg" src="${esc(w.img)}" alt="" loading="lazy">` : "";
+const wordHint = w => w.hint ? `<div class="hint">${esc(w.hint)}</div>` : "";
 function startSession(){
   cur = pickNext();
+  showCard();
+}
+/* draws `cur`; also used to redraw the card after its word was edited */
+function showCard(){
   $("#revHome").hidden = true; $("#revSession").hidden = false;
   const box = $("#revSession");
   if (!cur) {
@@ -1046,7 +1129,7 @@ function startSession(){
   const w = S.words[cur.w], rec = cur.d === "r";
   const front = rec
     ? `<div class="dir">What does it mean?</div><button class="big tap" data-about aria-label="About this word">${wordFace(w)}</button>${speakBtn(w.es)}`
-    : `<div class="dir">Say it in Spanish</div><div class="big" style="font-family:var(--f-ui)">${esc(w.en)}</div><div class="muted">${esc(posLine(w))}</div>`;
+    : `<div class="dir">Say it in Spanish</div><div class="big" style="font-family:var(--f-ui)">${esc(w.en)}</div><div class="muted">${esc(posLine(w))}</div>${wordImg(w)}`;
   const isNew = cur.state === "new";
   box.innerHTML = `
     <div class="row" style="justify-content:space-between"><button class="btn ghost small" id="endBtn">End</button><span class="muted" style="font-size:.85rem">${isNew ? "New word" : cur.state === "review" ? "Review" : "Practice"} · ${sessionDone} done</span></div>
@@ -1059,8 +1142,8 @@ function startSession(){
 function reveal(w, rec){
   const card = $("#theCard");
   card.innerHTML += `<hr>` + (rec
-    ? `<div class="mid">${esc(w.en || "—")}</div><div class="muted">${esc(posLine(w))}</div>`
-    : `<button class="big tap" data-about aria-label="About this word">${wordFace(w)}</button>${speakBtn(w.es)}`) +
+    ? `<div class="mid">${esc(w.en || "—")}</div><div class="muted">${esc(posLine(w))}</div>${wordImg(w)}${wordHint(w)}`
+    : `<button class="big tap" data-about aria-label="About this word">${wordFace(w)}</button>${speakBtn(w.es)}${wordHint(w)}`) +
     `<button class="btn ghost small" data-about>About this word ›</button><label class="note field">Your connection<textarea id="noteBox" placeholder="A memory, image, or person this word brings to mind">${esc(w.note)}</textarea></label>`;
   $("#noteBox").oninput = e => { w.note = e.target.value; save(); };
   const btns = ["Again","Hard","Good","Easy"].map((l, g) => `<button class="g${g}" data-g="${g}">${l}<small>${fmtGap(sched(cur, g).due - Date.now())}</small></button>`).join("");
@@ -1582,7 +1665,7 @@ function renderWords(){
   $("#wordList").innerHTML = list.slice(0, 300).map(w => `<button data-k="${esc(w.id)}"><span class="es">${wordFace(w)}</span>${statusPill(w.id)}<span class="en">${esc(w.en || "no meaning yet")}</span></button>`).join("") || `<p class="muted" style="padding:14px;margin:0">No matches.</p>`;
   $("#wMore").textContent = (list.length > 300 ? `Showing 300 of ${list.length}. Search to narrow it down. ` : "") + (starter ? `${starter} of these are sample starter words. Import your Duolingo list to replace them.` : "");
   if (starter && !openedImport) { $("#importBox").open = true; openedImport = true; }
-  renderCommon(); renderVoices();
+  renderCommon(); renderVoices(); if (!checkCtl) renderCheck();
 }
 let openBatch = 0;
 function renderCommon(){
@@ -1631,28 +1714,119 @@ $("#voiceList").onclick = e => {
 $("#speedChips").onclick = e => { const c = e.target.closest(".chip"); if (!c) return; S.settings.speed = +c.dataset.s; save(); renderVoices(); speak("Hola, ¿cómo estás? Vamos a practicar."); };
 $("#wordList").onclick = e => { const b = e.target.closest("[data-k]"); if (b) editWord(b.dataset.k); };
 $("#addWordBtn").onclick = () => editWord(null);
-function editWord(k){
-  const w = k ? S.words[k] : { es:"", en:"", pos:"", g:"", note:"" };
+function editWord(k, patch, why){
+  const w = Object.assign({ es:"", en:"", pos:"", g:"", note:"", hint:"", img:"" }, k ? S.words[k] : {});
   const c = k && S.cards[k+"|r"];
+  const v = f => patch && patch[f] != null ? String(patch[f]) : (w[f] || "");
   openSheet(`
     <h2>${k ? "Edit word" : "Add a word"}</h2>
-    <label class="field">Spanish (include el / la for nouns)<input type="text" id="eEs" value="${esc(w.es)}"></label>
-    <label class="field">Meaning<input type="text" id="eEn" value="${esc(w.en)}"></label>
-    <label class="field">Your connection<textarea id="eNote" placeholder="A memory, image, or person this word brings to mind">${esc(w.note)}</textarea></label>
+    ${why ? `<p class="muted" style="margin:0;font-size:.92rem">${esc(why)}</p>` : ""}
+    <label class="field">Spanish (include el / la for nouns)<input type="text" id="eEs" value="${esc(v("es"))}"></label>
+    <label class="field">Meaning<input type="text" id="eEn" value="${esc(v("en"))}"></label>
+    <label class="field">Shown on the card after the answer<input type="text" id="eHint" value="${esc(v("hint"))}" placeholder="An example phrase, a cognate, a hook"></label>
+    <label class="field">Image<div class="row" style="flex-wrap:nowrap"><input type="url" id="eImg" value="${esc(v("img"))}" placeholder="Paste an image link" style="flex:1;min-width:0"><button class="btn small" type="button" id="eFind">Find one</button></div></label>
+    <div id="ePick" class="stack" hidden></div>
+    <img class="wimg" id="ePreview" alt="" ${v("img") ? `src="${esc(v("img"))}"` : "hidden"}>
+    <label class="field">Your connection<textarea id="eNote" placeholder="A memory, image, or person this word brings to mind">${esc(v("note"))}</textarea></label>
     ${c && c.state !== "new" ? `<p class="muted" style="margin:0;font-size:.9rem">Reviewed ${c.reps} time${c.reps === 1 ? "" : "s"}${c.lapses ? `, forgotten ${c.lapses}` : ""}. Next review in ${fmtGap(Math.max(0, c.due - Date.now()))}.</p>` : ""}
     <div class="row"><button class="btn primary" id="eSave">Save</button>${k ? `<button class="btn ghost" id="eDel" style="color:var(--bad)">Delete</button>` : ""}</div>`, root => {
+      const img = root.querySelector("#eImg"), prev = root.querySelector("#ePreview"), pick = root.querySelector("#ePick");
+      const setImg = u => { img.value = u; prev.hidden = !u; if (u) prev.src = u; pick.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.u === u)); };
+      img.oninput = () => setImg(img.value.trim());
+      root.querySelector("#eFind").onclick = async ev => {
+        ev.target.disabled = true; pick.hidden = false;
+        const q = (root.querySelector("#eEn").value.split(/[,;(]/)[0] || root.querySelector("#eEs").value).trim();
+        pick.innerHTML = `<form class="row" id="eQ" style="flex-wrap:nowrap"><input type="search" value="${esc(q)}" style="flex:1;min-width:0" aria-label="Search images"><button class="btn small" type="submit">Search</button></form><div class="imgpick" id="eGrid"></div><p class="muted" style="margin:0;font-size:.8rem">Pictures from Wikimedia Commons.</p>`;
+        const grid = pick.querySelector("#eGrid");
+        const go = async term => {
+          grid.innerHTML = `<span class="muted" style="grid-column:1/-1">Looking…</span>`;
+          try {
+            const urls = await findImages(term);
+            grid.innerHTML = urls.map(u => `<button type="button" data-u="${esc(u)}" aria-pressed="${u === img.value}"><img src="${esc(u)}" alt="" loading="lazy"></button>`).join("") || `<span class="muted" style="grid-column:1/-1">Nothing found. Try another word.</span>`;
+          } catch (e) { grid.innerHTML = `<span class="muted" style="grid-column:1/-1">Couldn't reach Wikimedia Commons.</span>`; }
+        };
+        pick.querySelector("#eQ").onsubmit = e => { e.preventDefault(); go(e.target.querySelector("input").value.trim()); };
+        grid.onclick = e => { const b = e.target.closest("[data-u]"); if (b) setImg(b.dataset.u === img.value ? "" : b.dataset.u); };
+        go(q); ev.target.disabled = false;
+      };
       root.querySelector("#eSave").onclick = () => {
         const es = root.querySelector("#eEs").value.trim(), en = root.querySelector("#eEn").value.trim(), note = root.querySelector("#eNote").value;
+        const hint = root.querySelector("#eHint").value.trim(), imgU = img.value.trim();
         if (!es) { toast("Enter the Spanish word"); return; }
         const g = /^(el|un)\s/i.test(es) ? "m" : /^(la|una)\s/i.test(es) ? "f" : "";
-        if (k && keyOf(es) === k) Object.assign(S.words[k], { es, en, note, g: g || S.words[k].g });
-        else { if (k) removeWord(k); const nk = addWord(es, en, g ? "noun" : "", g, "manual"); if (nk) S.words[nk].note = note; else if (!k) { toast("You already have that word"); return; } }
-        save(); closeSheet(); renderWords(); toast("Saved");
+        let nk = k;
+        if (k) nk = updateWord(k, { es, en, note, hint, img: imgU, pos: patch?.pos || (g && !S.words[k].pos ? "noun" : undefined), g: g || (patch?.g ?? S.words[k].g) });
+        else { nk = addWord(es, en, g ? "noun" : "", g, "manual"); if (!nk) { toast("You already have that word"); return; } Object.assign(S.words[nk], { note, hint, img: imgU }); if (!hint) delete S.words[nk].hint; if (!imgU) delete S.words[nk].img; }
+        save(); closeSheet(); toast("Saved");
+        if (!$("#revSession").hidden && cur && cur.w === nk) showCard(); else renderWords();
       };
       const del = root.querySelector("#eDel");
       if (del) del.onclick = () => { if (del.dataset.armed) { const ranked = !!rankOf(k); removeWord(k); if (ranked) S.skip[k] = 1; save(); closeSheet(); renderWords(); toast(ranked ? "Deleted. It won't come back from the common list." : "Deleted"); } else { del.dataset.armed = 1; del.textContent = "Tap again to delete"; } };
   });
 }
+/* pictures for a card: Wikimedia Commons search, thumbnails at 320px */
+async function findImages(q){
+  const u = "https://commons.wikimedia.org/w/api.php?" + new URLSearchParams({ action: "query", generator: "search", gsrsearch: "filetype:bitmap " + q, gsrnamespace: 6, gsrlimit: 9, prop: "imageinfo", iiprop: "url", iiurlwidth: 320, format: "json", origin: "*" });
+  const d = await (await fetch(u)).json();
+  return Object.values(d.query?.pages || {}).sort((a, b) => a.index - b.index).map(p => (p.imageinfo?.[0]?.thumburl || "").split("?")[0]).filter(Boolean);
+}
+
+/* card check: Claude reads every card in batches and lists the ones that look wrong */
+const CHECK_BATCH = 40;
+let checkCtl = null;
+function checkWords(){ return Object.values(S.words).sort((a, b) => a.id.localeCompare(b.id)).map(w => ({ id: w.id, es: w.es, en: w.en, pos: w.pos, g: w.g })); }
+async function reviewBatch(batch, signal){
+  let r;
+  try { r = await fetch("api/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ words: batch }), signal }); }
+  catch (e) { throw { code: e?.name === "AbortError" ? "cancelled" : "upstream_error" }; }
+  const arr = parseLoose((await readStream(r, { signal })).text);
+  return (Array.isArray(arr) ? arr : []).map(it => {
+    const w = batch[+it?.n - 1]; if (!w) return null;
+    return { id: w.id, was: { es: w.es, en: w.en, pos: w.pos, g: w.g }, problem: String(it.problem || ""), sure: it.sure !== false,
+      fix: { es: String(it.es || w.es), en: String(it.en || w.en), pos: String(it.pos || w.pos || ""), g: ["m", "f", ""].includes(it.g) ? it.g : (w.g || "") } };
+  }).filter(Boolean);
+}
+async function runCheck(){
+  const all = checkWords(), R = S.review && S.review.partial ? S.review : { at: Date.now(), checked: 0, total: all.length, items: [], partial: true };
+  R.total = all.length; S.review = R; checkCtl = new AbortController();
+  $("#checkBtn").textContent = "Stop"; $("#checkBtn").dataset.running = 1;
+  try {
+    while (R.checked < all.length) {
+      $("#checkStatus").textContent = `Checking ${R.checked + 1}–${Math.min(R.checked + CHECK_BATCH, all.length)} of ${all.length}…`;
+      const found = await reviewBatch(all.slice(R.checked, R.checked + CHECK_BATCH), checkCtl.signal);
+      R.items.push(...found.filter(f => !R.items.some(x => x.id === f.id))); R.checked = Math.min(R.checked + CHECK_BATCH, all.length); save(); renderCheck(true);
+    }
+    delete R.partial; R.at = Date.now(); save();
+  } catch (e) { if (e.code !== "cancelled") toast(errCopy(e)); }
+  checkCtl = null; delete $("#checkBtn").dataset.running; renderCheck();
+}
+function renderCheck(running){
+  const R = S.review, btn = $("#checkBtn"), st = $("#checkStatus"), list = $("#checkList");
+  if (!AI) { btn.hidden = true; st.textContent = "Claude isn't set up on this server."; list.hidden = true; return; }
+  btn.hidden = false;
+  if (!running) { btn.textContent = R?.partial ? `Continue (${R.checked} of ${R.total} done)` : R ? "Check again" : "Check all my cards"; btn.disabled = false; }
+  const items = R?.items || [];
+  if (!running) st.textContent = !R ? "" : R.partial ? `Stopped after ${R.checked} of ${R.total}. ${items.length} to look at so far.` : `Checked ${R.checked} cards on ${fmtDate(R.at)}. ${items.length ? `${items.length} to look at.` : "They all look right."}`;
+  list.hidden = !items.length;
+  const sure = items.filter(i => i.sure).length;
+  list.innerHTML = (sure > 1 ? `<div class="crow"><div class="row"><button class="btn small primary" data-all>Apply all ${sure} clear fixes</button><span class="muted" style="font-size:.85rem">Debatable ones stay for you to decide.</span></div></div>` : "") + items.map((it, i) => {
+    const same = f => it.was[f] === it.fix[f];
+    return `<div class="crow" data-i="${i}">
+      <div><span class="${same("es") ? "fix" : "was"}">${esc(it.was.es)}</span>${same("es") ? "" : ` → <span class="fix">${esc(it.fix.es)}</span>`} <span class="muted">·</span> <span class="${same("en") ? "" : "was"}">${esc(it.was.en || "—")}</span>${same("en") ? "" : ` → <span class="fix">${esc(it.fix.en)}</span>`}${same("pos") && same("g") ? "" : ` <span class="muted">· ${esc([it.fix.g === "m" ? "masculine" : it.fix.g === "f" ? "feminine" : "", it.fix.pos].filter(Boolean).join(" "))}</span>`}${it.sure ? "" : ` <span class="pill" style="grid-row:auto;grid-column:auto">maybe</span>`}</div>
+      <div class="muted" style="font-size:.88rem">${esc(it.problem)}</div>
+      <div class="row"><button class="btn small primary" data-apply>Apply</button><button class="btn small" data-edit>Edit</button><button class="btn ghost small" data-keep>Keep as is</button></div></div>`;
+  }).join("");
+}
+$("#checkBtn").onclick = () => { if ($("#checkBtn").dataset.running) { checkCtl?.abort(); $("#checkBtn").disabled = true; } else runCheck(); };
+$("#checkList").onclick = e => {
+  const R = S.review; if (!R) return;
+  if (e.target.closest("[data-all]")) { R.items.filter(i => i.sure).forEach(i => updateWord(i.id, i.fix)); R.items = R.items.filter(i => !i.sure); save(); renderCheck(); renderWords(); toast("Applied"); return; }
+  const row = e.target.closest("[data-i]"); if (!row) return;
+  const i = +row.dataset.i, it = R.items[i];
+  if (e.target.closest("[data-apply]")) { updateWord(it.id, it.fix); R.items.splice(i, 1); save(); renderCheck(); renderWords(); toast("Updated"); }
+  else if (e.target.closest("[data-keep]")) { R.items.splice(i, 1); save(); renderCheck(); }
+  else if (e.target.closest("[data-edit]")) { if (!S.words[it.id]) { R.items.splice(i, 1); save(); renderCheck(); return; } editWord(it.id, it.fix, it.problem); R.items.splice(i, 1); save(); renderCheck(); }
+};
 
 /* import */
 // Runs on duolingo.com as a bookmarklet, so it must be self-contained: nothing from this page is reachable there.

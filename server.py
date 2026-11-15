@@ -11,6 +11,7 @@ and proxies Claude so the browser never holds an API key.
     python3 server.py feedback        print every bug report and idea as JSON Lines, oldest first
     python3 server.py export NAME     print NAME's state as a backup (same shape as the app's Copy backup)
     python3 server.py import NAME     replace NAME's state from a backup on stdin
+    python3 server.py review NAME     check every one of NAME's cards with Claude; stores the findings for the app
 
 Environment: PV_DB (sqlite path), PV_PUBLIC (public URL of the app, for links),
 PV_BASE (path prefix behind the proxy, for the cookie), ANTHROPIC_API_KEY,
@@ -262,7 +263,7 @@ def state_items(S):
     for st in S.get("stories") or []:
         if isinstance(st, dict) and st.get("id"):
             out.append(("story", str(st["id"]), json.dumps(st, ensure_ascii=False)))
-    for k in ("settings", "newDay", "adv", "conj", "skip"):
+    for k in ("settings", "newDay", "adv", "conj", "skip", "review"):
         if k in S:
             out.append(("meta", k, json.dumps(S[k], ensure_ascii=False)))
     return out
@@ -302,6 +303,65 @@ def replace_state(con, uid, S):
     con.executemany("INSERT OR IGNORE INTO log (user_id, t, json) VALUES (?,?,?)",
                     [(uid, int(e["t"]), json.dumps(e, ensure_ascii=False)) for e in S.get("log") or [] if isinstance(e, dict) and "t" in e])
     return bump(con, uid)
+
+
+# ---------- card review ----------
+
+REVIEW_BATCH = 40
+REVIEW_FIELDS = ("es", "en", "pos", "g")
+
+
+def review_prompt(words):
+    lines = "\n".join(f'{i + 1}. {w.get("es", "")} | {w.get("en", "")} | {w.get("pos") or "-"} | {w.get("g") or "-"}' for i, w in enumerate(words))
+    return f"""You are checking a Spanish learner's flashcards for mistakes. Each line is one card: number, Spanish headword (nouns carry el/la), English meaning, part of speech, gender (m/f or -).
+Target variety: Latin American Spanish (Mexican/Colombian register).
+
+Flag a card only when something is actually wrong: the English meaning is not a meaning of the Spanish word at all, or is a rare sense while the everyday sense is missing; the Spanish is misspelled or missing an accent; the article or gender is wrong; the part of speech is wrong; or the word is Spain-only when Latin America uses another word (say so, keep the word). Do not flag cards that are merely terse, that use one of several fine translations, or that lack an article on a non-noun.
+
+Return a JSON array only, no prose, with one object per flagged card and nothing for the others:
+[{{"n": line number, "problem": one short sentence saying what is wrong, "es": corrected Spanish headword with el/la for nouns, "en": corrected English meaning (short, comma-separated senses), "pos": one of noun, verb, adjective, adverb, phrase, pronoun, preposition, conjunction, other, "g": "m", "f" or "", "sure": true if the current card is plainly wrong, false if it is debatable}}]
+If every card is fine, return [].
+
+Cards:
+{lines}"""
+
+
+def parse_review(text, words):
+    m = re.search(r"\[[\s\S]*\]", text or "")
+    try:
+        arr = json.loads(m.group(0) if m else "[]")
+    except ValueError:
+        arr = []
+    out = []
+    for it in arr if isinstance(arr, list) else []:
+        if not isinstance(it, dict):
+            continue
+        try:
+            w = words[int(it.get("n")) - 1]
+        except (TypeError, ValueError, IndexError):
+            continue
+        out.append({"id": w.get("id") or w.get("es"), "was": {k: w.get(k, "") for k in REVIEW_FIELDS},
+                    "problem": str(it.get("problem") or "")[:300], "sure": bool(it.get("sure", True)),
+                    "fix": {"es": str(it.get("es") or w.get("es") or "")[:80], "en": str(it.get("en") or w.get("en") or "")[:120],
+                            "pos": str(it.get("pos") or w.get("pos") or "")[:20], "g": it.get("g") if it.get("g") in ("m", "f", "") else (w.get("g") or "")}})
+    return out
+
+
+def review_all(client, S, progress=None):
+    """Run every word through Claude in batches; returns the app's `review` meta object."""
+    words = sorted(S.get("words", {}).values(), key=lambda w: w.get("id", ""))
+    items = []
+    for i in range(0, len(words), REVIEW_BATCH):
+        batch = words[i:i + REVIEW_BATCH]
+        model, effort, extra = MODELS["default"]
+        msg = client.messages.create(model=model, max_tokens=8000, output_config={"effort": effort},
+                                     messages=[{"role": "user", "content": review_prompt(batch)}], **extra)
+        text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+        found = parse_review(text, batch)
+        items.extend(found)
+        if progress:
+            progress(min(i + REVIEW_BATCH, len(words)), len(words), found)
+    return {"at": now_ms(), "checked": len(words), "items": items}
 
 
 # ---------- HTTP ----------
@@ -455,6 +515,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"S": S, "stamp": stamp})
             if path == "/api/ai":
                 return self.ai(con, user, body)
+            if path == "/api/review":
+                return self.review(con, user, body)
             self.send_json({"error": "not_found"}, 404)
         finally:
             con.close()
@@ -565,12 +627,23 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(audio)
 
     def ai(self, con, user, body):
-        client = claude()
-        if not client:
-            return self.send_json({"error": "ai_off"}, 503)
         prompt = str(body.get("prompt") or "")
         if not prompt or len(prompt) > 60000:
             return self.send_json({"error": "bad_prompt"}, 400)
+        tier = body.get("tier") if body.get("tier") in MODELS else "default"
+        return self.stream_claude(con, user, prompt, tier)
+
+    def review(self, con, user, body):
+        """Check up to REVIEW_BATCH cards; streams Claude's JSON array like api/ai does."""
+        words = body.get("words")
+        if not isinstance(words, list) or not words or len(words) > REVIEW_BATCH or not all(isinstance(w, dict) for w in words):
+            return self.send_json({"error": "bad_request"}, 400)
+        return self.stream_claude(con, user, review_prompt(words), "default")
+
+    def stream_claude(self, con, user, prompt, tier):
+        client = claude()
+        if not client:
+            return self.send_json({"error": "ai_off"}, 503)
         uid, day = user[0], date.today().isoformat()
         with con:
             con.execute("INSERT INTO ai_usage (user_id, day) VALUES (?,?) ON CONFLICT DO NOTHING", (uid, day))
@@ -578,7 +651,6 @@ class Handler(BaseHTTPRequestHandler):
             if calls >= AI_DAILY:
                 return self.send_json({"error": "rate_limited"}, 429)
             con.execute("UPDATE ai_usage SET calls = calls + 1 WHERE user_id = ? AND day = ?", (uid, day))
-        tier = body.get("tier") if body.get("tier") in MODELS else "default"
         model, effort, extra = MODELS[tier]
 
         # One JSON object per line: {"t": text} as it streams, then {"done": stop_reason} or {"error": code}.
@@ -659,6 +731,25 @@ def cli(args):
         S, _, _ = load_state(con, user_by_name(con, args[1])[0])
         S["log"] = [json.loads(js) for (js,) in con.execute("SELECT json FROM log WHERE user_id = ? ORDER BY t", (user_by_name(con, args[1])[0],))]
         print(json.dumps({"app": "palabras", "v": 1, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "S": S}, ensure_ascii=False))
+    elif cmd == "review" and len(args) == 2:
+        client = claude()
+        if not client:
+            sys.exit("ANTHROPIC_API_KEY is not set")
+        uid = user_by_name(con, args[1])[0]
+        S, _, _ = load_state(con, uid)
+
+        def progress(done, total, found):
+            for f in found:
+                print(json.dumps(f, ensure_ascii=False), flush=True)
+            print(f"# {done}/{total} checked, {len(found)} flagged in this batch", file=sys.stderr, flush=True)
+
+        review = review_all(client, S, progress)
+        with con:
+            con.execute("INSERT INTO items (user_id, kind, id, json, updated) VALUES (?,?,?,?,?) "
+                        "ON CONFLICT (user_id, kind, id) DO UPDATE SET json = excluded.json, updated = excluded.updated",
+                        (uid, "meta", "review", json.dumps(review, ensure_ascii=False), now_ms()))
+            bump(con, uid)
+        print(f"# {len(review['items'])} of {review['checked']} cards flagged; saved for the app", file=sys.stderr)
     elif cmd == "import" and len(args) == 2:
         d = json.load(sys.stdin)
         with con:
