@@ -962,14 +962,14 @@ function cardSheet(w){
         again.hidden = true; out.textContent = "Thinking…";
         sheetCtl = new AbortController();
         try {
-          const { text } = await AI(`A learner of Latin American Spanish is studying the flashcard ${card()} and finds it hard to remember. Help them, in plain English with short labelled paragraphs (no markdown, no bullets): 1. Meaning and nuance: what it means and how it differs from near-synonyms. 2. Etymology: where the word comes from and any English cognate or memory hook. 3. Examples: three short everyday sentences in Spanish, each followed by its English translation on the next line. 4. Related: two or three related words or common phrases built on it, with meanings. Keep it under 180 words. If the card's meaning, article or spelling is wrong, say so in one sentence first.`,
+          const { text } = await AI(`A learner of Latin American Spanish is studying the flashcard ${card()} and finds it hard to remember. Help them, in plain English with short labelled paragraphs (no markdown, no bullets): 1. Meaning and nuance: what it means and how it differs from near-synonyms. 2. Etymology: where the word comes from and any English cognate or memory hook. 3. Examples: three short everyday sentences in Spanish, each followed by its English translation on the next line. 4. Related: two or three related words or common phrases built on it, with meanings. Keep it under 180 words. Do not comment on the card itself or whether it is correct; just explain the word.`,
             { signal: sheetCtl.signal, onText: ({ text }) => { out.textContent = text; } });
           w.info = text; save();
         } catch (e) { if (e.code !== "cancelled") out.textContent = errCopy(e); }
         again.hidden = false;
       };
       again.onclick = run;
-      if (w.info) { out.textContent = w.info; again.hidden = false; } else run();
+      if (w.info) { w.info = w.info.replace(/^(The|This|Your) (flash)?card (is|looks) (correct|right|accurate|fine)[^\n]*\n+/i, ""); out.textContent = w.info; again.hidden = false; } else run();
       const qaBlock = (q, a) => { const d = document.createElement("div"); d.className = "qa"; d.innerHTML = `<b></b><div class="muted" style="white-space:pre-wrap"></div>`; d.firstChild.textContent = q; d.lastChild.textContent = a; qaOut.append(d); return d.lastChild; };
       (w.qa || []).forEach(x => qaBlock(x.q, x.a));
       const history = () => (w.qa || []).map(x => `Q: ${x.q}\nA: ${x.a}`).join("\n\n");
